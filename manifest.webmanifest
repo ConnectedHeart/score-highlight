@@ -1,0 +1,15 @@
+{
+  "name": "악보 하이라이트",
+  "short_name": "악보하이라이트",
+  "description": "MIDI 악보와 연습 음원을 함께 재생하며 파트별 현재 음표를 빨갛게 표시",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#f6f7fb",
+  "theme_color": "#1f2a44",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}
