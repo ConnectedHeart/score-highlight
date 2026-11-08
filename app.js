@@ -1392,7 +1392,18 @@
   // 웹앱(아이폰 홈 화면 등): 오프라인 캐시 등록, 저장한 곡이 지워지지 않게 요청
   var isNative = !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
   if (!isNative && 'serviceWorker' in navigator && location.protocol === 'https:') {
-    navigator.serviceWorker.register('sw.js').catch(function (e) { console.warn('서비스 워커 등록 실패', e); });
+    // 새 버전이 설치되면(이미 쓰던 사람만) 화면을 한 번 새로 고쳐 바로 새 버전으로 바꾼다
+    var hadController = !!navigator.serviceWorker.controller, reloaded = false;
+    navigator.serviceWorker.addEventListener('controllerchange', function () {
+      if (!hadController || reloaded) return;
+      if (state.rec || (!player.paused)) return; // 녹음·재생 중에는 방해하지 않는다(다음에 열 때 적용)
+      reloaded = true;
+      location.reload();
+    });
+    navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).then(function (reg) {
+      // 앱으로 돌아올 때마다 새 버전 확인
+      document.addEventListener('visibilitychange', function () { if (!document.hidden) reg.update().catch(function () { /* 무시 */ }); });
+    }).catch(function (e) { console.warn('서비스 워커 등록 실패', e); });
   }
   if (navigator.storage && navigator.storage.persist) { navigator.storage.persist().catch(function () { /* 무시 */ }); }
 
