@@ -80,6 +80,15 @@ button.wide { width: 100%; padding: 14px; font-size: 16px; }
 .row select { padding: 6px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); }
 
 .edit-banner { display: flex; align-items: center; justify-content: space-between; gap: 8px; background: #fff4d6; color: #6b4e00; padding: 8px 12px; font-size: 14px; border-bottom: 1px solid #f0d78c; }
+/* 악보 위에 겹쳐 띄운다(악보 높이가 바뀌면 페이지를 다시 나눠야 하므로 자리를 차지하지 않게) */
+.loop-banner { position: fixed; left: 8px; right: 70px; z-index: 15; background: rgba(253, 232, 232, 0.97); color: #8a1c1f; border: 1px solid #f3b9bb; border-radius: 10px; font-weight: 600; box-shadow: 0 2px 8px rgba(0,0,0,0.12); }
+/* 구간 반복 표시: 고른 시작 마디(진하게), 반복 구간(옅게) */
+.loop-banner button { flex: none; white-space: nowrap; }
+#score .loop-mark { pointer-events: none; }
+#score .loop-mark.pick { fill: rgba(224, 38, 43, 0.22); stroke: #e0262b; stroke-width: 3; }
+#score .loop-mark.range { fill: rgba(224, 38, 43, 0.09); stroke: none; }
+#score .loop-mark.range.first { stroke: #e0262b; stroke-width: 2; stroke-dasharray: 0; }
+#score .loop-mark.range.last { stroke: #e0262b; stroke-width: 2; }
 .lyric-text { width: 100%; margin: 8px 0; padding: 10px; border: 1px solid var(--line); border-radius: 10px; font: inherit; font-size: 15px; line-height: 1.6; resize: vertical; }
 .toast { position: fixed; left: 50%; bottom: 140px; transform: translateX(-50%); background: rgba(20,24,35,0.9); color: #fff; padding: 10px 16px; border-radius: 10px; font-size: 14px; z-index: 30; max-width: 90%; text-align: center; }
 

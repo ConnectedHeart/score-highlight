@@ -296,6 +296,7 @@
         tightenRules(osmd.EngravingRules, paged);
         osmd.render();
         buildMap();
+        drawLoopMarks();
         wrap.scrollLeft = 0; wrap.scrollTop = 0;
         state.page = 0;
         if (keep) {
@@ -565,21 +566,68 @@
     else if (state.loopStep === 1) b.textContent = '시작 마디?';
     else if (state.loopStep === 2) b.textContent = '끝 마디?';
     else b.textContent = '구간반복';
+    // 위쪽 안내 띠: 지금 무엇을 골라야 하는지, 무엇을 골랐는지
+    var bar = $('loopBanner'), txt = $('loopBannerText');
+    if (state.loopStep === 1) txt.textContent = '구간 반복: 시작 마디의 음표를 누르세요';
+    else if (state.loopStep === 2) txt.textContent = '시작 ' + measureNo(state.loopStartMeasure) + '마디 ✓ → 끝 마디 음표를 누르세요';
+    else if (state.loop) txt.textContent = '반복 중: ' + measureNo(state.loop.ma) + '~' + measureNo(state.loop.mb) + '마디 (빨간 바탕)';
+    bar.classList.toggle('hidden', !state.loopStep && !state.loop);
+    // 악보 영역 아래쪽(보통 비어 있는 곳)에 띄운다
+    if (!bar.classList.contains('hidden')) bar.style.top = (wrap.getBoundingClientRect().bottom - bar.offsetHeight - 8) + 'px';
+    $('loopBannerBtn').textContent = state.loop ? '끄기' : '취소';
+    drawLoopMarks();
+  }
+  function clearLoop(msg) {
+    state.loop = null; state.loopStep = 0; updateLoopBtn();
+    if (msg) toast(msg);
   }
   $('loopBtn').onclick = function () {
-    if (state.loop || state.loopStep) {
-      state.loop = null; state.loopStep = 0; updateLoopBtn();
-      toast('구간 반복을 껐습니다');
-      return;
-    }
+    if (state.loop || state.loopStep) { clearLoop('구간 반복을 껐습니다'); return; }
     state.loopStep = 1; updateLoopBtn();
-    toast('반복할 구간의 첫 마디에 있는 음표를 누르세요', 3500);
   };
+  $('loopBannerBtn').onclick = function () { clearLoop(state.loop ? '구간 반복을 껐습니다' : ''); };
+
+  // 악보 위에 고른 마디를 칠한다(시작 마디 고른 뒤: 그 마디 진하게, 구간이 정해지면: 구간 전체 옅게 + 시작·끝 테두리)
+  function drawLoopMarks() {
+    var score = $('score');
+    Array.prototype.forEach.call(score.querySelectorAll('.loop-mark'), function (n) { n.remove(); });
+    if (!state.osmd || !state.osmd.GraphicSheet) return;
+    var from, to, kind;
+    if (state.loopStep === 2) { from = to = state.loopStartMeasure; kind = 'pick'; }
+    else if (state.loop) { from = state.loop.ma; to = state.loop.mb; kind = 'range'; }
+    else return;
+    var list = state.osmd.GraphicSheet.MeasureList, NS = 'http://www.w3.org/2000/svg';
+    var pages = state.osmd.GraphicSheet.MusicPages || [];
+    function pageNoOf(sys) { var i = pages.indexOf(sys.Parent); return i >= 0 ? i + 1 : 1; } // 페이지 div id는 1부터
+    for (var m = from; m <= to; m++) {
+      var bySystem = new Map();
+      (list[m] || []).forEach(function (gm) {
+        if (!gm || !gm.ParentMusicSystem || !gm.PositionAndShape) return;
+        var p = gm.PositionAndShape.AbsolutePosition, sz = gm.PositionAndShape.Size;
+        var h = Math.max(sz.height, 4); // 오선 높이 4칸
+        var r = bySystem.get(gm.ParentMusicSystem);
+        if (!r) bySystem.set(gm.ParentMusicSystem, r = { x: p.x, w: sz.width, top: p.y, bottom: p.y + h, page: pageNoOf(gm.ParentMusicSystem) });
+        r.top = Math.min(r.top, p.y); r.bottom = Math.max(r.bottom, p.y + h);
+      });
+      bySystem.forEach(function (r) {
+        // 페이지 SVG 자체의 id가 osmdSvgPageN이다
+        var el = score.querySelector('#osmdSvgPage' + r.page);
+        var svg = el ? (el.tagName.toLowerCase() === 'svg' ? el : el.querySelector('svg')) : score.querySelector('svg');
+        if (!svg) return;
+        var rect = document.createElementNS(NS, 'rect');
+        rect.setAttribute('class', 'loop-mark ' + kind + (m === from ? ' first' : '') + (m === to ? ' last' : ''));
+        rect.setAttribute('x', r.x * 10);
+        rect.setAttribute('y', (r.top - 1.5) * 10);
+        rect.setAttribute('width', r.w * 10);
+        rect.setAttribute('height', (r.bottom - r.top + 3) * 10);
+        svg.insertBefore(rect, svg.firstChild);
+      });
+    }
+  }
   function loopPick(ev) {
     if (state.loopStep === 1) {
       state.loopStartMeasure = ev.measure;
       state.loopStep = 2; updateLoopBtn();
-      toast(measureNo(ev.measure) + '마디부터. 이제 마지막 마디의 음표를 누르세요', 3500);
       return;
     }
     var ma = Math.min(state.loopStartMeasure, ev.measure), mb = Math.max(state.loopStartMeasure, ev.measure);
@@ -589,7 +637,6 @@
     state.loopStep = 0; updateLoopBtn();
     player.currentTime = Math.max(0, a + trackOffset());
     lastLoopSec = a;
-    toast(measureNo(ma) + '~' + measureNo(mb) + '마디를 반복합니다. 버튼을 다시 누르면 꺼집니다', 3500);
   }
 
   var seeking = false;
