@@ -1,7 +1,8 @@
 {
- "version": "v202611081550",
+ "version": "v202611081731",
  "files": [
   "app.js",
+  "fast-sky.js",
   "icons/icon-180.png",
   "icons/icon-192.png",
   "icons/icon-512.png",

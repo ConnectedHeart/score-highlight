@@ -330,10 +330,10 @@
           osmd.setPageFormat('Endless');
         }
         tightenRules(osmd.EngravingRules, paged);
-        osmd.render();
         // 페이지 방식에서 악보 한 단(모든 파트 줄)이 화면 높이보다 크면 아래 줄이 잘린다.
         // 넘치지 않을 때까지 크기를 줄여 다시 그린다(설정한 확대값이 최대).
         state.fitZoom = state.zoom;
+        osmd.render();
         if (paged) {
           for (var tries = 0; tries < 4; tries++) {
             var over = pageOverflowRatio();
@@ -1367,15 +1367,35 @@
   }
 
   // ---------------- 설정 패널 ----------------
+  // 설정 창이 열린 동안 바꾼 설정은 창을 닫을 때 한 번만 다시 그린다.
+  // (폰에서는 악보를 다시 그리는 몇 초 동안 화면이 멈춰, 셀렉트를 고른 바로 다음 터치가 먹히지 않았다)
+  var pendingRender = null;
+  function settingsOpen() { return !$('panel').classList.contains('hidden'); }
+  function requestRender(keepPage) {
+    if (settingsOpen()) { pendingRender = { keep: !!(keepPage || (pendingRender && pendingRender.keep)) }; return; }
+    renderScore(false, keepPage).then(updateHighlight);
+  }
+  new MutationObserver(function () {
+    if (settingsOpen()) return;
+    var p = pendingRender;
+    pendingRender = null;
+    if (!state.song || !state.osmd || $('songView').classList.contains('hidden')) return;
+    if (p) renderScore(false, p.keep).then(updateHighlight);
+    else onWrapResize(); // 창이 열린 동안 미뤄 둔 크기 변화(키보드 등)
+  }).observe($('panel'), { attributes: true, attributeFilter: ['class'] });
+  // 안드로이드에서 고른 뒤에도 셀렉트에 포커스가 남지 않게 한다
+  ['layoutSel', 'lyricSel', 'viewSel'].forEach(function (id) {
+    $(id).addEventListener('change', function () { var el = this; setTimeout(function () { el.blur(); }, 0); });
+  });
   $('layoutSel').onchange = function () {
     state.layout = this.value;
     try { localStorage.setItem('layout', state.layout); } catch (e) { /* 무시 */ }
-    renderScore(false).then(updateHighlight);
+    requestRender(false);
   };
   $('lyricSel').onchange = function () {
     state.lyrics = this.value;
     try { localStorage.setItem('lyrics', state.lyrics); } catch (e) { /* 무시 */ }
-    renderScore(false).then(updateHighlight);
+    requestRender(false);
   };
   $('menuBtn').onclick = function () {
     $('lyricSel').value = state.lyrics;
@@ -1392,13 +1412,14 @@
   $('viewSel').onchange = function () {
     state.view = this.value;
     try { localStorage.setItem('view', state.view); } catch (e) { /* 무시 */ }
-    renderScore(false);
+    requestRender(false);
   };
   // 확대는 5% 단위(기본 45%로 돌아갈 수 있게)
   function setZoom(z) {
     state.zoom = Math.max(0.2, Math.min(2, Math.round(z * 20) / 20));
     try { localStorage.setItem('zoom', state.zoom); } catch (e) { /* 무시 */ }
-    renderScore(false, true).then(updateHighlight);
+    $('zoomVal').textContent = Math.round(state.zoom * 100) + '%';
+    requestRender(true);
   }
   $('zoomIn').onclick = function () { setZoom(state.zoom + 0.05); };
   $('zoomOut').onclick = function () { setZoom(state.zoom - 0.05); };
@@ -1432,6 +1453,7 @@
   function onWrapResize() {
     clearTimeout(rt);
     rt = setTimeout(function () {
+      if (settingsOpen()) return; // 설정 창을 닫을 때 다시 확인한다
       if (sizeChanged()) renderScore(false, true).then(function () { updateHighlight(); });
     }, 250);
   }
@@ -1611,7 +1633,7 @@
         before: openSample },
       { v: 3, target: '#focusBtn', title: '악보 크게 보기', text: '<b>악보의 빈 곳(음표가 아닌 곳)을 누르면</b> 위·아래 버튼이 숨고 악보가 화면 가득 보입니다. 한 번 더 누르면 버튼이 다시 나옵니다. 이 버튼으로도 숨길 수 있습니다.<br>숨긴 동안에는 오른쪽 아래 작은 조작부(▶, ↺5)로 재생합니다. 화면이 작아 악보 한 단이 다 안 들어가면 크기를 자동으로 줄여 아래 줄이 잘리지 않게 합니다.',
         before: openSample },
-      { target: '#menuBtn', title: '설정', text: '확대·축소, 가사 표시, <b>가사 고치기</b>, 음원 추가, <b>곡 묶음 내보내기</b>(단원에게 공유), 사용법 다시 보기가 여기 있습니다.',
+      { v: 5, target: '#menuBtn', title: '설정', text: '확대·축소, 가사 표시, <b>가사 고치기</b>, 음원 추가, <b>곡 묶음 내보내기</b>(단원에게 공유), 사용법 다시 보기가 여기 있습니다.<br>넘김 방식·가사·확대 같은 설정은 <b>설정 창을 닫을 때 한 번에</b> 악보에 적용됩니다(여러 개를 바꿔도 한 번만 다시 그려 빠릅니다).',
         before: openSample },
       { target: '#backBtn', title: '다 됐습니다', text: '이제 내 곡을 추가해 연습해 보세요. 왼쪽 위 화살표로 곡 목록에 돌아갑니다. 예제 곡은 목록에 남아 있으니 지워도 되고, 사용법은 목록 화면의 <b>?</b> 버튼으로 다시 볼 수 있습니다.',
         before: openSample }
@@ -1620,8 +1642,8 @@
   // 튜토리얼 판(版). 기능을 추가하면 그 단계에 v: 새 번호를 붙이고 이 값을 올린다.
   // 이전 판을 본 사람에게는 앱을 열 때 새 단계만 "새로 추가된 기능"으로 보여 준다.
   //  1: 기본(곡 추가~설정)  2: 녹음, 내 녹음  3: 악보 빈 곳 눌러 버튼 숨기기(악보 크게 보기), 화면에 맞춤
-  //  4: 파트 버튼 한 줄 가로 스크롤
-  var TUTORIAL_VERSION = 4;
+  //  4: 파트 버튼 한 줄 가로 스크롤  5: 설정은 창을 닫을 때 적용
+  var TUTORIAL_VERSION = 5;
   function seenTutorialVersion() {
     try {
       var v = parseInt(localStorage.getItem('tutorialVersion'), 10);
