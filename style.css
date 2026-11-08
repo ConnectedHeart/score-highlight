@@ -59,7 +59,10 @@ button.wide { width: 100%; padding: 14px; font-size: 16px; }
 .seek-row { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
 .seek-row input { flex: 1; accent-color: var(--accent); }
 .btn-row { display: flex; align-items: center; justify-content: center; gap: 10px; margin-top: 6px; }
-.btn-row .tool { min-width: 64px; }
+.btn-row .tool { min-width: 64px; white-space: nowrap; padding: 6px 8px; }
+.btn-row button, .tool-row button, .tool-row select { white-space: nowrap; }
+.tool-row { flex-wrap: nowrap; gap: 6px; }
+.tool-row button { padding: 6px 9px; }
 .btn-row .tool.on, .tool-row .on { background: var(--accent); color: #fff; border-color: var(--accent); }
 .tool-row { display: flex; align-items: center; justify-content: center; gap: 10px; margin-top: 6px; }
 .tool-row select { border: 1px solid var(--line); border-radius: 10px; padding: 6px; background: var(--panel); font-size: 14px; }

@@ -295,6 +295,19 @@
         }
         tightenRules(osmd.EngravingRules, paged);
         osmd.render();
+        // 페이지 방식에서 악보 한 단(모든 파트 줄)이 화면 높이보다 크면 아래 줄이 잘린다.
+        // 넘치지 않을 때까지 크기를 줄여 다시 그린다(설정한 확대값이 최대).
+        state.fitZoom = state.zoom;
+        if (paged) {
+          for (var tries = 0; tries < 4; tries++) {
+            var over = pageOverflowRatio();
+            if (over <= 1.0) break;
+            state.fitZoom = Math.max(0.2, state.fitZoom / over * 0.97);
+            osmd.Zoom = state.fitZoom;
+            osmd.setCustomPageFormat(state.pageW, state.pageH);
+            osmd.render();
+          }
+        }
         state.lastRenderW = wrap.clientWidth;
         // 그리는 동안 크기가 또 바뀌었으면 한 번 더
         setTimeout(onWrapResize, 50);
@@ -307,7 +320,8 @@
           else wrap.scrollTop = keep.top;
         }
         updatePageInfo();
-        $('zoomVal').textContent = Math.round(state.zoom * 100) + '%';
+        $('zoomVal').textContent = Math.round(state.zoom * 100) + '%' +
+          (state.fitZoom < state.zoom - 0.005 ? ' (화면에 맞춰 ' + Math.round(state.fitZoom * 100) + '%)' : '');
       });
     }).catch(function (e) {
       toast('악보를 그리지 못했습니다: ' + e.message, 5000); console.error(e);
@@ -329,6 +343,20 @@
     return xml.replace(/<part id="P(\d+)">[\s\S]*?<\/part>/g, function (block, n) {
       return (+n - 1) === keep ? block : block.replace(/<lyric\b[\s\S]*?<\/lyric>/g, '');
     });
+  }
+
+  // 페이지 내용(그려진 악보)의 아래 끝이 페이지 높이의 몇 배인지. 1 이하면 잘리지 않는다.
+  function pageOverflowRatio() {
+    var worst = 0;
+    Array.prototype.forEach.call($('score').querySelectorAll('svg'), function (svg) {
+      var vb = svg.viewBox && svg.viewBox.baseVal;
+      if (!vb || !vb.height) return;
+      var bb;
+      try { bb = svg.getBBox(); } catch (e) { return; }
+      var r = (bb.y + bb.height + 4) / vb.height;
+      if (r > worst) worst = r;
+    });
+    return worst;
   }
 
   // 한 화면에 마디가 더 들어가도록 여백·간격을 줄인다
@@ -707,7 +735,11 @@
       if (state.elToEvent.has(g)) { idx = state.elToEvent.get(g); break; }
       g = g.parentNode;
     }
-    if (idx === undefined) return;
+    if (idx === undefined) {
+      // 음표가 아닌 빈 곳을 누르면 버튼 숨김/보임(구간 고르기·가사 편집 중에는 제외)
+      if (!state.loopStep && !state.editLyrics && !state.syncMode) setFocus(!document.body.classList.contains('focus'));
+      return;
+    }
     if (state.editLyrics) { editNoteLyric(idx); return; }
     if (state.loopStep) { loopPick(state.analysis.events[idx]); return; }
     if (!state.track) return;
@@ -1453,7 +1485,7 @@
         before: openSample },
       { target: '#playBtn', title: '재생', text: '누르면 재생됩니다. 빨간 음표가 다음 페이지로 넘어가면 화면이 <b>바로</b> 다음 페이지로 바뀝니다. 오른쪽 아래 숫자가 페이지 번호입니다.',
         before: openSample },
-      { target: '#scoreWrap', title: '악보 다루기', text: '<b>음표를 누르면</b> 그 위치로 이동합니다.<br>화면을 <b>좌우로 밀면</b> 페이지를 넘겨 볼 수 있고, 4초 뒤 다시 재생 위치를 따라갑니다.',
+      { target: '#scoreWrap', title: '악보 다루기', text: '<b>음표를 누르면</b> 그 위치로 이동합니다. <b>빈 곳을 누르면</b> 버튼이 숨고 악보가 크게 보입니다(다시 누르면 나옴).<br>화면을 <b>좌우로 밀면</b> 페이지를 넘겨 볼 수 있고, 4초 뒤 다시 재생 위치를 따라갑니다.',
         before: openSample },
       { target: '#loopBtn', title: '구간 반복', text: '어려운 부분만 반복합니다. 누른 뒤 <b>시작 마디의 음표</b> → <b>끝 마디의 음표</b>를 차례로 누르면, 그 구간이 빨간 바탕으로 칠해지고 계속 반복됩니다. 다시 누르면 꺼집니다.',
         before: openSample },
@@ -1465,7 +1497,7 @@
         before: openSample },
       { v: 2, target: '#recListBtn', title: '내 녹음 듣기', text: '녹음 목록입니다. <b>반주와 같이</b> 또는 <b>내 목소리만</b> 들을 수 있고, 악보 빨간 표시도 따라갑니다. 목소리가 반주보다 늦게 들리면 <b>녹음 박자 보정</b>으로 맞추세요. 카카오톡 등으로 보낼 수도 있습니다.',
         before: openSample },
-      { v: 2, target: '#focusBtn', title: '악보 크게 보기', text: '누르면 위·아래 버튼을 모두 숨기고 <b>악보를 화면 가득</b> 보여 줍니다. 오른쪽 아래 작은 조작부(▶, ↺5)로 재생하고, <b>버튼 보이기</b>를 누르면 다시 나타납니다.',
+      { v: 3, target: '#focusBtn', title: '악보 크게 보기', text: '<b>악보의 빈 곳(음표가 아닌 곳)을 누르면</b> 위·아래 버튼이 숨고 악보가 화면 가득 보입니다. 한 번 더 누르면 버튼이 다시 나옵니다. 이 버튼으로도 숨길 수 있습니다.<br>숨긴 동안에는 오른쪽 아래 작은 조작부(▶, ↺5)로 재생합니다. 화면이 작아 악보 한 단이 다 안 들어가면 크기를 자동으로 줄여 아래 줄이 잘리지 않게 합니다.',
         before: openSample },
       { target: '#menuBtn', title: '설정', text: '확대·축소, 가사 표시, <b>가사 고치기</b>, 음원 추가, <b>곡 묶음 내보내기</b>(단원에게 공유), 사용법 다시 보기가 여기 있습니다.',
         before: openSample },
@@ -1475,8 +1507,8 @@
   }
   // 튜토리얼 판(版). 기능을 추가하면 그 단계에 v: 새 번호를 붙이고 이 값을 올린다.
   // 이전 판을 본 사람에게는 앱을 열 때 새 단계만 "새로 추가된 기능"으로 보여 준다.
-  //  1: 기본(곡 추가~설정)  2: 녹음, 내 녹음, 악보 크게 보기
-  var TUTORIAL_VERSION = 2;
+  //  1: 기본(곡 추가~설정)  2: 녹음, 내 녹음  3: 악보 빈 곳 눌러 버튼 숨기기(악보 크게 보기), 화면에 맞춤
+  var TUTORIAL_VERSION = 3;
   function seenTutorialVersion() {
     try {
       var v = parseInt(localStorage.getItem('tutorialVersion'), 10);
