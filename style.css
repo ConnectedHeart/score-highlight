@@ -90,6 +90,18 @@ button.wide { width: 100%; padding: 14px; font-size: 16px; }
 #score .loop-mark.range.first { stroke: #e0262b; stroke-width: 2; stroke-dasharray: 0; }
 #score .loop-mark.range.last { stroke: #e0262b; stroke-width: 2; }
 .lyric-text { width: 100%; margin: 8px 0; padding: 10px; border: 1px solid var(--line); border-radius: 10px; font: inherit; font-size: 15px; line-height: 1.6; resize: vertical; }
+/* 녹음 */
+.rec-btn.on { background: #c62828; color: #fff; border-color: #c62828; animation: recblink 1.2s infinite; }
+@keyframes recblink { 50% { opacity: 0.65; } }
+.rec-list { list-style: none; padding: 0; margin: 0 0 8px; max-height: 40vh; overflow-y: auto; }
+.rec-list li { border: 1px solid var(--line); border-radius: 10px; padding: 10px; margin-bottom: 8px; }
+.rec-list .meta { font-size: 13px; color: var(--muted); margin-bottom: 6px; }
+.rec-list .meta b { color: var(--ink); font-size: 14px; }
+.rec-list .acts { display: flex; gap: 6px; flex-wrap: wrap; }
+.rec-list .acts .on { background: var(--accent); color: #fff; border-color: var(--accent); }
+.rec-list .empty { color: var(--muted); text-align: center; border: none; }
+.row input[type=range] { flex: 1; max-width: 60%; accent-color: var(--accent); }
+
 /* 튜토리얼 */
 .bar .help { width: 32px; height: 32px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.7); font-size: 17px; font-weight: 700; padding: 0; color: #fff; }
 .sample-btn { margin-top: 10px; background: #fff; color: var(--brand); border: 1px dashed var(--brand); }

@@ -78,8 +78,25 @@
           <option value="1.1">속도 1.1x</option>
         </select>
         <button id="tapBtn" class="small" title="재생 중 지금 들리는 음표를 누르면 시작 위치를 맞춥니다">싱크</button>
+        <button id="recBtn" class="small rec-btn">🎙 녹음</button>
+        <button id="recListBtn" class="small">내 녹음</button>
       </div>
     </footer>
+
+    <!-- 내 녹음 -->
+    <div id="recPanel" class="panel hidden">
+      <div class="panel-box">
+        <h2>내 녹음</h2>
+        <ul id="recList" class="rec-list"></ul>
+        <label class="row">반주 크기 <input id="recAccVol" type="range" min="0" max="100" value="70"></label>
+        <label class="row">내 목소리 크기 <input id="recMyVol" type="range" min="0" max="100" value="100"></label>
+        <label class="row">녹음 박자 보정(초)
+          <span><button id="latMinus" class="small">−</button> <span id="latVal">0.15</span> <button id="latPlus" class="small">+</button></span>
+        </label>
+        <p class="hint">다시 들을 때 내 목소리가 반주보다 늦게 들리면 +, 빠르게 들리면 −를 누르세요(블루투스 이어폰은 지연이 커서 0.2~0.4초가 맞을 수 있습니다). 녹음할 때는 <b>이어폰</b>을 끼면 반주 소리가 녹음에 섞이지 않습니다. 녹음은 폰 안에만 저장됩니다.</p>
+        <div class="row"><span></span><button id="recClose" class="primary small">닫기</button></div>
+      </div>
+    </div>
 
     <!-- 믹서(MIDI 소리) -->
     <div id="mixPanel" class="panel hidden">

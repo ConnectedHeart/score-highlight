@@ -57,7 +57,7 @@
     var Ctx = window.AudioContext || window.webkitAudioContext;
     this._ctx = new Ctx();
     this._master = this._ctx.createGain();
-    this._master.gain.value = 0.5;
+    this._master.gain.value = 0.5 * (this._masterVol === undefined ? 1 : this._masterVol);
     var comp = this._ctx.createDynamicsCompressor();
     this._master.connect(comp);
     comp.connect(this._ctx.destination);
@@ -70,6 +70,11 @@
       g.connect(this._master);
     }
     return g;
+  };
+  // 전체 볼륨(녹음 다시 듣기에서 반주 크기 조절용), 1 = 기본
+  P.setMasterVolume = function (v) {
+    this._masterVol = v;
+    if (this._master && this._ctx) this._master.gain.setTargetAtTime(0.5 * v, this._ctx.currentTime, 0.02);
   };
   P.setVolume = function (part, v) {
     this.volumes[part] = v;

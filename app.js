@@ -533,7 +533,7 @@
   function play() {
     if (!state.track) { toast('재생할 음원이 없습니다.'); return; }
     // 구간 반복 중인데 구간 밖에 있으면 구간 처음부터
-    if (state.loop) {
+    if (state.loop && !state.recPlay) {
       var s = scoreSec();
       if (s < state.loop.a - 0.05 || s >= state.loop.b) player.currentTime = Math.max(0, state.loop.a + trackOffset());
     }
@@ -544,10 +544,23 @@
   function pause() { player.pause(); }
   [audioEl, midiPlayer].forEach(function (pl) {
     pl.addEventListener('play', function () { if (pl !== player) return; $('playBtn').textContent = '❚❚'; cancelAnimationFrame(raf); raf = requestAnimationFrame(loop); });
-    pl.addEventListener('pause', function () { if (pl !== player) return; $('playBtn').textContent = '▶'; cancelAnimationFrame(raf); updateHighlight(); updateTimeUi(); });
-    pl.addEventListener('ended', function () { if (pl !== player) return; $('playBtn').textContent = '▶'; });
+    pl.addEventListener('pause', function () {
+      if (pl !== player) return;
+      $('playBtn').textContent = '▶'; cancelAnimationFrame(raf); updateHighlight(); updateTimeUi();
+      if (state.rec) stopRecording();
+      if (state.recPlay) stopRecPlayback();
+    });
+    pl.addEventListener('ended', function () {
+      if (pl !== player) return;
+      $('playBtn').textContent = '▶';
+      if (state.rec) stopRecording();
+    });
     pl.addEventListener('loadedmetadata', function () { if (pl === player) updateTimeUi(); });
-    pl.addEventListener('seeked', function () { if (pl !== player) return; updateHighlight(); updateTimeUi(); });
+    pl.addEventListener('seeked', function () {
+      if (pl !== player) return;
+      updateHighlight(); updateTimeUi();
+      if (state.recPlay && Math.abs((recEl.currentTime - state.recPlay.rec.lead - state.recLatency) * state.recPlay.rec.rate - (scoreSec() - state.recPlay.rec.scoreStart)) > 0.3) resyncRecording();
+    });
   });
 
   // 아이폰은 무음 스위치가 켜져 있으면 Web Audio(MIDI 소리)가 안 들린다. 무음 소리를 함께 재생하면 들린다.
@@ -568,6 +581,9 @@
   var lastLoopSec = 0;
   function checkLoop() {
     var s = scoreSec();
+    // 녹음 중에는 구간 끝에서 되돌아가지 않고 녹음을 마친다. 녹음 다시 듣기 중에는 구간 반복을 쓰지 않는다.
+    if (state.rec && state.loop && s >= state.loop.b) { pause(); return; }
+    if (state.recPlay) { lastLoopSec = s; return; }
     if (state.loop && s >= state.loop.b && lastLoopSec < state.loop.b && lastLoopSec >= state.loop.a - 0.5) {
       player.currentTime = Math.max(0, state.loop.a + trackOffset());
       lastLoopSec = state.loop.a;
@@ -703,6 +719,199 @@
     }
     player.currentTime = Math.max(0, sec + (state.track.offset || 0) - 0.03);
   });
+
+  // ---------------- 녹음 ----------------
+  // 반주를 틀면서 마이크로 녹음하고, 나중에 반주와 겹쳐(또는 내 목소리만) 다시 듣는다.
+  // 녹음 정보: { id, blob, mime, createdAt, scoreStart(악보 초), lead(녹음 시작~반주 시작, 초), rate, trackId, trackName, duration }
+  var recEl = new Audio();
+  recEl.preload = 'auto';
+  state.recLatency = 0.15;
+  try { var lv = parseFloat(localStorage.getItem('recLatency')); if (isFinite(lv)) state.recLatency = lv; } catch (e) { /* 무시 */ }
+  var recTimer = 0;
+
+  function pickMime() {
+    if (!window.MediaRecorder || !MediaRecorder.isTypeSupported) return '';
+    var c = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/aac', 'audio/ogg;codecs=opus'];
+    for (var i = 0; i < c.length; i++) if (MediaRecorder.isTypeSupported(c[i])) return c[i];
+    return '';
+  }
+  function startRecording() {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia || !window.MediaRecorder) {
+      toast('이 기기·브라우저는 녹음을 지원하지 않습니다', 4000); return;
+    }
+    if (!state.track) { toast('반주로 쓸 음원이 없습니다'); return; }
+    stopRecPlayback();
+    pause();
+    if (state.loop) player.currentTime = Math.max(0, state.loop.a + trackOffset());
+    navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } }).then(function (stream) {
+      var mime = pickMime();
+      var rec;
+      try { rec = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream); }
+      catch (e) { rec = new MediaRecorder(stream); }
+      var sess = { recorder: rec, stream: stream, chunks: [], mime: rec.mimeType || mime || 'audio/webm', rate: player.playbackRate || 1,
+        trackId: state.track.id, trackName: state.track.name, songId: state.song.id };
+      rec.ondataavailable = function (e) { if (e.data && e.data.size) sess.chunks.push(e.data); };
+      rec.onstop = function () { finishRecording(sess); };
+      try { rec.start(250); }
+      catch (e) { stream.getTracks().forEach(function (t) { t.stop(); }); throw e; }
+      state.rec = sess;
+      sess.recStart = performance.now();
+      sess.scoreStart = scoreSec();
+      if (player === midiPlayer) iosUnmute();
+      var p = player.play();
+      Promise.resolve(p).then(function () {
+        sess.lead = (performance.now() - sess.recStart) / 1000;
+      }).catch(function (e) { toast('반주를 재생하지 못했습니다: ' + e.message); stopRecording(); });
+      $('recBtn').classList.add('on');
+      clearInterval(recTimer);
+      recTimer = setInterval(function () {
+        $('recBtn').textContent = '■ ' + fmt((performance.now() - sess.recStart) / 1000);
+      }, 250);
+      $('recBtn').textContent = '■ 0:00';
+      toast(state.loop ? '녹음 중: 반복 구간 끝에서 자동으로 멈춥니다' : '녹음 중: ■ 또는 일시정지를 누르면 멈춥니다', 3000);
+    }).catch(function (e) {
+      toast(e && e.name === 'NotAllowedError' ? '마이크 사용을 허용해야 녹음할 수 있습니다' : '마이크를 열지 못했습니다: ' + (e && e.message), 4500);
+    });
+  }
+  function stopRecording() {
+    var s = state.rec;
+    if (!s) return;
+    state.rec = null;
+    s.duration = (performance.now() - s.recStart) / 1000;
+    if (s.lead === undefined) s.lead = 0;
+    clearInterval(recTimer);
+    $('recBtn').classList.remove('on');
+    $('recBtn').textContent = '🎙 녹음';
+    try { if (s.recorder.state !== 'inactive') s.recorder.stop(); } catch (e) { finishRecording(s); }
+    s.stream.getTracks().forEach(function (t) { t.stop(); });
+    if (!player.paused) pause();
+  }
+  function finishRecording(s) {
+    if (s.done) return;
+    s.done = true;
+    if (!s.chunks.length || s.duration < 0.8) { toast('녹음이 너무 짧아 저장하지 않았습니다'); return; }
+    var blob = new Blob(s.chunks, { type: s.mime.split(';')[0] });
+    var item = { id: uid(), blob: blob, mime: s.mime, createdAt: Date.now(), scoreStart: s.scoreStart, lead: s.lead,
+      rate: s.rate, trackId: s.trackId, trackName: s.trackName, duration: s.duration };
+    if (!state.song || state.song.id !== s.songId) return;
+    (state.song.recordings = state.song.recordings || []).unshift(item);
+    saveSong().then(function () {
+      toast('녹음을 저장했습니다. "내 녹음"에서 들어 보세요', 3000);
+      renderRecList();
+    });
+  }
+
+  function recRangeText(r) {
+    var a = state.analysis;
+    var m1 = measureAt(a.secToTick(r.scoreStart)), m2 = measureAt(a.secToTick(r.scoreStart + Math.max(0, r.duration - r.lead) * r.rate));
+    return measureNo(m1) + '~' + measureNo(m2) + '마디';
+  }
+  function dateText(t) {
+    var d = new Date(t), p = function (n) { return (n < 10 ? '0' : '') + n; };
+    return (d.getMonth() + 1) + '/' + d.getDate() + ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
+  }
+  function renderRecList() {
+    var ul = $('recList');
+    ul.innerHTML = '';
+    var list = (state.song && state.song.recordings) || [];
+    if (!list.length) { ul.innerHTML = '<li class="empty">아직 녹음이 없습니다. 아래 🎙 녹음을 눌러 반주에 맞춰 불러 보세요.</li>'; return; }
+    list.forEach(function (r) {
+      var li = document.createElement('li');
+      var meta = document.createElement('div'); meta.className = 'meta';
+      meta.innerHTML = '<b>' + dateText(r.createdAt) + '</b> · ' + recRangeText(r) + ' · ' + fmt(r.duration) + (r.rate !== 1 ? ' · 속도 ' + r.rate + 'x' : '');
+      var acts = document.createElement('div'); acts.className = 'acts';
+      function btn(label, fn, on) { var b = document.createElement('button'); b.className = 'small' + (on ? ' on' : ''); b.textContent = label; b.onclick = fn; acts.appendChild(b); return b; }
+      var playing = state.recPlay && state.recPlay.rec.id === r.id;
+      btn(playing && state.recPlay.mode === 'both' ? '■ 정지' : '▶ 반주와 같이', function () { if (playing && state.recPlay.mode === 'both') stopRecPlayback(); else playRecording(r, 'both'); }, playing && state.recPlay.mode === 'both');
+      btn(playing && state.recPlay.mode === 'mine' ? '■ 정지' : '▶ 내 목소리만', function () { if (playing && state.recPlay.mode === 'mine') stopRecPlayback(); else playRecording(r, 'mine'); }, playing && state.recPlay.mode === 'mine');
+      btn('보내기', function () {
+        var ext = /mp4|aac/.test(r.mime) ? 'm4a' : /ogg/.test(r.mime) ? 'ogg' : 'webm';
+        shareBlob(r.blob, safeName(state.song.title) + ' 녹음 ' + dateText(r.createdAt).replace(/[\/: ]/g, '-') + '.' + ext, '내 녹음')
+          .catch(function (e) { if (e && e.name !== 'AbortError') toast('보내기 실패: ' + e.message); });
+      });
+      btn('삭제', function () {
+        if (!confirm('이 녹음을 삭제할까요? 되돌릴 수 없습니다.')) return;
+        if (state.recPlay && state.recPlay.rec.id === r.id) stopRecPlayback();
+        state.song.recordings = state.song.recordings.filter(function (x) { return x.id !== r.id; });
+        saveSong().then(renderRecList);
+      });
+      li.appendChild(meta); li.appendChild(acts);
+      ul.appendChild(li);
+    });
+  }
+
+  function setAccVolume(v) {
+    audioEl.volume = Math.max(0, Math.min(1, v));
+    midiPlayer.setMasterVolume(v);
+  }
+  function playRecording(r, mode) {
+    stopRecPlayback();
+    if (state.rec) return;
+    pause();
+    // 녹음할 때 쓴 반주로
+    var t = r.trackId === MIDI_TRACK_ID ? state.midiTrack : state.song.tracks.filter(function (x) { return x.id === r.trackId; })[0];
+    if (t && (!state.track || state.track.id !== t.id)) selectTrack(t.id);
+    var url = URL.createObjectURL(r.blob);
+    state.recPlay = { rec: r, mode: mode, url: url };
+    $('speedSel').value = String(r.rate);
+    player.playbackRate = r.rate;
+    setAccVolume(mode === 'mine' ? 0 : $('recAccVol').value / 100);
+    recEl.volume = $('recMyVol').value / 100;
+    recEl.src = url;
+    // 녹음 파일과 반주가 둘 다 준비되면 같은 지점에서 함께 시작
+    function ready(el, evName, minState) {
+      if (!el || el.readyState >= minState) return Promise.resolve();
+      return new Promise(function (res) {
+        var done = function () { el.removeEventListener(evName, done); res(); };
+        el.addEventListener(evName, done);
+        setTimeout(done, 4000);
+      });
+    }
+    Promise.all([ready(recEl, 'canplay', 3), player === audioEl ? ready(audioEl, 'loadedmetadata', 1) : null]).then(function () {
+      if (!state.recPlay || state.recPlay.url !== url) return;
+      player.currentTime = Math.max(0, r.scoreStart + trackOffset());
+      try { recEl.currentTime = Math.max(0, r.lead + state.recLatency); } catch (e) { /* 일부 webm은 길이 정보가 없어 처음부터 */ }
+      if (player === midiPlayer) iosUnmute();
+      return Promise.all([recEl.play(), Promise.resolve(player.play())]);
+    }).catch(function (e) { toast('재생하지 못했습니다: ' + e.message); stopRecPlayback(); });
+    renderRecList();
+  }
+  // 녹음 다시 듣는 중 악보를 눌러 이동하면 녹음도 같은 곳으로
+  function resyncRecording() {
+    var rp = state.recPlay;
+    if (!rp) return;
+    var t = rp.rec.lead + state.recLatency + (scoreSec() - rp.rec.scoreStart) / rp.rec.rate;
+    if (t < 0 || t > rp.rec.duration) { stopRecPlayback(); return; }
+    try { recEl.currentTime = t; } catch (e) { /* 무시 */ }
+  }
+  function stopRecPlayback() {
+    var rp = state.recPlay;
+    if (!rp) return;
+    state.recPlay = null;
+    recEl.pause();
+    recEl.oncanplay = null;
+    URL.revokeObjectURL(rp.url);
+    setAccVolume(1);
+    if (!player.paused) pause();
+    renderRecList();
+  }
+  recEl.addEventListener('ended', function () { if (state.recPlay) stopRecPlayback(); });
+
+  $('recBtn').onclick = function () { if (state.rec) stopRecording(); else startRecording(); };
+  $('recListBtn').onclick = function () { $('latVal').textContent = state.recLatency.toFixed(2); renderRecList(); $('recPanel').classList.remove('hidden'); };
+  $('recClose').onclick = function () { $('recPanel').classList.add('hidden'); };
+  $('recPanel').onclick = function (e) { if (e.target === this) this.classList.add('hidden'); };
+  $('recAccVol').oninput = function () { if (state.recPlay && state.recPlay.mode === 'both') setAccVolume(this.value / 100); };
+  $('recMyVol').oninput = function () { recEl.volume = this.value / 100; };
+  function setLatency(v) {
+    state.recLatency = Math.round(Math.max(-0.5, Math.min(1, v)) * 100) / 100;
+    $('latVal').textContent = state.recLatency.toFixed(2);
+    try { localStorage.setItem('recLatency', state.recLatency); } catch (e) { /* 무시 */ }
+    // 듣는 중이면 바로 반영
+    if (state.recPlay) resyncRecording();
+  }
+  $('latMinus').onclick = function () { setLatency(state.recLatency - 0.03); };
+  $('latPlus').onclick = function () { setLatency(state.recLatency + 0.03); };
 
   // ---------------- 믹서(MIDI 소리 파트별 볼륨·조옮김) ----------------
   function effectiveVolumes() {
