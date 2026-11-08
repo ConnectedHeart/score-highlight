@@ -224,7 +224,8 @@
 
       // 음자리표
       // 높은 음역은 높은음자리표, 'Male' 같은 남성 멜로디는 옥타브 낮은 높은음자리표, 나머지는 낮은음자리표
-      if (pt.avgPitch >= 62) pt.clef = 'G';
+      if (/soprano|alto|mezzo|소프라노|알토|메조/i.test(pt.name)) pt.clef = 'G'; // 여성 파트는 이름으로 높은음자리표
+      else if (pt.avgPitch >= 62) pt.clef = 'G';
       else if (/male|남성/i.test(pt.name) && pt.avgPitch >= 55) pt.clef = 'G8';
       else pt.clef = 'F';
     });

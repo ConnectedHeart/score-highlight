@@ -19,9 +19,11 @@
   <section id="listView" class="view">
     <header class="bar">
       <h1>악보 하이라이트</h1>
+      <button id="helpBtn" class="icon help" aria-label="사용법">?</button>
     </header>
     <div class="list-body">
       <button id="addSongBtn" class="primary wide">+ 새 곡 추가 (MIDI + 음원 선택)</button>
+      <button id="sampleBtn" class="wide sample-btn">▶ 사용법 보기 (예제 곡으로 따라 하기)</button>
       <p class="hint">MIDI 파일 1개와 음원(6파트 전체 믹스 mp3 등)을 한 번에 골라 주세요. 음원이 없어도 MIDI 소리로 들을 수 있습니다. 다른 사람이 보낸 곡 묶음(.zip)을 고르면 그대로 가져옵니다.</p>
       <ul id="songList" class="song-list"></ul>
     </div>
@@ -140,6 +142,10 @@
           <button id="exportBtn" class="small">곡 묶음 내보내기</button>
         </div>
         <div class="row">
+          <span>처음 쓰는 분께</span>
+          <button id="tutorialBtn" class="small">사용법 다시 보기</button>
+        </div>
+        <div class="row">
           <button id="deleteSongBtn" class="danger small">이 곡 삭제</button>
           <button id="closePanel" class="primary small">닫기</button>
         </div>
@@ -172,6 +178,7 @@
   <script src="store.js"></script>
   <script src="midisynth.js"></script>
   <script src="pack.js"></script>
+  <script src="tutorial.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

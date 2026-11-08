@@ -90,6 +90,22 @@ button.wide { width: 100%; padding: 14px; font-size: 16px; }
 #score .loop-mark.range.first { stroke: #e0262b; stroke-width: 2; stroke-dasharray: 0; }
 #score .loop-mark.range.last { stroke: #e0262b; stroke-width: 2; }
 .lyric-text { width: 100%; margin: 8px 0; padding: 10px; border: 1px solid var(--line); border-radius: 10px; font: inherit; font-size: 15px; line-height: 1.6; resize: vertical; }
+/* 튜토리얼 */
+.bar .help { width: 32px; height: 32px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.7); font-size: 17px; font-weight: 700; padding: 0; color: #fff; }
+.sample-btn { margin-top: 10px; background: #fff; color: var(--brand); border: 1px dashed var(--brand); }
+.tut-overlay { position: fixed; inset: 0; z-index: 50; }
+.tut-overlay.dim { background: rgba(0, 0, 0, 0.6); }
+.tut-overlay.busy .tut-bubble { opacity: 0.4; pointer-events: none; }
+.tut-spot { position: fixed; border-radius: 12px; box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.6); border: 2px solid #ffd54f; transition: all 0.25s ease; pointer-events: none; }
+.tut-bubble { position: fixed; background: #fff; color: var(--ink); border-radius: 14px; padding: 14px 16px; box-shadow: 0 6px 24px rgba(0,0,0,0.3); max-width: 520px; margin: 0 auto; }
+.tut-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+.tut-count { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.tut-skip { border: none; background: none; color: var(--muted); font-size: 13px; padding: 2px 4px; text-decoration: underline; }
+.tut-title { font-size: 17px; font-weight: 700; margin-bottom: 6px; }
+.tut-text { font-size: 15px; line-height: 1.55; }
+.tut-text b { color: var(--accent); }
+.tut-nav { display: flex; justify-content: space-between; margin-top: 12px; }
+.tut-nav button { min-width: 84px; }
 .toast { position: fixed; left: 50%; bottom: 140px; transform: translateX(-50%); background: rgba(20,24,35,0.9); color: #fff; padding: 10px 16px; border-radius: 10px; font-size: 14px; z-index: 30; max-width: 90%; text-align: center; }
 
 /* 악보에서 지금 부르는 음표 */

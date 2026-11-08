@@ -151,7 +151,7 @@
 
   // ---------------- 곡 열기 ----------------
   function openSong(id) {
-    SongStore.get(id).then(function (song) {
+    return SongStore.get(id).then(function (song) {
       if (!song) { toast('곡을 찾지 못했습니다'); return; }
       state.song = song;
       state.analysis = Midi2Xml.analyze(song.midi, { lyrics: song.lyrics });
@@ -386,6 +386,7 @@
     var tg = e.target, tag = tg && tg.tagName;
     if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (tg && tg.isContentEditable)) return;
     if (document.querySelector('.panel:not(.hidden)')) return;
+    if (window.Tutorial && Tutorial.isOpen()) return;
     if ($('songView').classList.contains('hidden')) return;
     if (e.key === ' ') {
       // 방금 누른 버튼에 포커스가 남아 있으면 스페이스가 그 버튼도 누르므로 포커스를 뺀다
@@ -1147,9 +1148,73 @@
     });
   }
 
+  // ---------------- 튜토리얼 ----------------
+  var SAMPLE_ID = 'sample-twinkle';
+  function ensureSample() {
+    return SongStore.get(SAMPLE_ID).then(function (s) {
+      if (s) return s;
+      var song = { id: SAMPLE_ID, title: '예제: 반짝반짝 작은 별', midiName: 'twinkle-sample.mid', midi: Tutorial.makeSampleMidi(),
+        tracks: [], hlPart: '0', createdAt: Date.now() };
+      return SongStore.put(song).then(function () { return song; });
+    });
+  }
+  function closeAllPanels() {
+    ['panel', 'mixPanel', 'lyricDialog'].forEach(function (id) { $(id).classList.add('hidden'); });
+    if (state.editLyrics) setEditLyrics(false);
+  }
+  function inSong() { return !$('songView').classList.contains('hidden'); }
+  function openSample() {
+    closeAllPanels();
+    if (inSong() && state.song && state.song.id === SAMPLE_ID) return Promise.resolve();
+    pause();
+    return ensureSample().then(function () { return openSong(SAMPLE_ID); }).then(function () {
+      return new Promise(function (r) { setTimeout(r, 300); });
+    });
+  }
+  function tutorialSteps() {
+    return [
+      { title: '악보 하이라이트에 오신 걸 환영합니다', text: 'MIDI 악보와 연습 음원을 같이 재생하면, 내가 고른 파트의 <b>지금 부를 음표가 빨갛게</b> 표시됩니다.<br>예제 곡으로 하나씩 따라 해 볼게요. 언제든 <b>건너뛰기</b>를 눌러 끝낼 수 있습니다.',
+        before: function () { closeAllPanels(); if (inSong()) showList(); } },
+      { target: '#addSongBtn', title: '곡 추가', text: '여기서 <b>MIDI 파일 1개</b>와 <b>연습 음원(mp3)</b>을 한 번에 골라 곡을 추가합니다. 다른 사람이 보낸 <b>곡 묶음(.zip)</b>도 여기서 고르면 그대로 들어옵니다.<br>MIDI와 mp3는 카카오톡 "파일에 저장"이나 클라우드로 폰에 넣어 두세요.',
+        before: function () { closeAllPanels(); if (inSong()) showList(); } },
+      { title: '예제 곡을 열어 볼게요', text: '"반짝반짝 작은 별"을 4성부(소프라노·알토·테너·베이스)로 만든 예제 곡입니다. 다음을 누르면 열립니다.', nextLabel: '예제 곡 열기' },
+      { target: '#partBar', title: '내 파트 고르기', text: '빨갛게 표시할 파트를 고릅니다. <b>전체</b>를 고르면 모든 파트가 표시됩니다. 악보는 항상 전체가 보이고, 고른 파트만 빨갛게 바뀝니다.',
+        before: openSample, wait: 200 },
+      { target: '#trackBar', title: '들을 소리 고르기', text: '곡에 넣은 mp3 음원(♪)과 <b>🎹 MIDI 소리</b> 중에서 고릅니다. mp3가 없어도 MIDI 소리로 들을 수 있습니다. 예제 곡은 MIDI 소리만 있습니다.',
+        before: openSample },
+      { target: '#playBtn', title: '재생', text: '누르면 재생됩니다. 빨간 음표가 다음 페이지로 넘어가면 화면이 <b>바로</b> 다음 페이지로 바뀝니다. 오른쪽 아래 숫자가 페이지 번호입니다.',
+        before: openSample },
+      { target: '#scoreWrap', title: '악보 다루기', text: '<b>음표를 누르면</b> 그 위치로 이동합니다.<br>화면을 <b>좌우로 밀면</b> 페이지를 넘겨 볼 수 있고, 4초 뒤 다시 재생 위치를 따라갑니다.',
+        before: openSample },
+      { target: '#loopBtn', title: '구간 반복', text: '어려운 부분만 반복합니다. 누른 뒤 <b>시작 마디의 음표</b> → <b>끝 마디의 음표</b>를 차례로 누르면, 그 구간이 빨간 바탕으로 칠해지고 계속 반복됩니다. 다시 누르면 꺼집니다.',
+        before: openSample },
+      { target: '#mixBtn', title: '믹서', text: 'MIDI 소리일 때 파트별 볼륨을 조절합니다. <b>내 파트 크게</b>, <b>내 파트 빼고</b>(나머지 파트만 반주처럼), 조옮김을 할 수 있습니다.',
+        before: openSample },
+      { target: '#speedSel', title: '속도', text: '0.5배~1.1배로 느리게·빠르게 들을 수 있습니다. 음 높이는 그대로입니다.',
+        before: openSample },
+      { target: '#menuBtn', title: '설정', text: '확대·축소, 가사 표시, <b>가사 고치기</b>, 음원 추가, <b>곡 묶음 내보내기</b>(단원에게 공유), 사용법 다시 보기가 여기 있습니다.',
+        before: openSample },
+      { target: '#backBtn', title: '다 됐습니다', text: '이제 내 곡을 추가해 연습해 보세요. 왼쪽 위 화살표로 곡 목록에 돌아갑니다. 예제 곡은 목록에 남아 있으니 지워도 되고, 사용법은 목록 화면의 <b>?</b> 버튼으로 다시 볼 수 있습니다.',
+        before: openSample }
+    ];
+  }
+  function startTutorial() {
+    try { localStorage.setItem('tutorialDone', '1'); } catch (e) { /* 무시 */ }
+    Tutorial.start(tutorialSteps(), function () { pause(); });
+  }
+  $('helpBtn').onclick = startTutorial;
+  $('sampleBtn').onclick = startTutorial;
+  $('tutorialBtn').onclick = function () { $('panel').classList.add('hidden'); startTutorial(); };
+  function maybeFirstRunTutorial() {
+    var done = false;
+    try { done = !!localStorage.getItem('tutorialDone'); } catch (e) { done = true; }
+    if (!done) setTimeout(startTutorial, 600);
+  }
+
   // 시험용: ?demo=1 이면 sample/ 폴더의 score.mid와 음원을 불러온다(PC 확인용)
   window.__app = { state: state, openSong: openSong, selectTrack: selectTrack, updateHighlight: updateHighlight,
-    buildPack: buildPack, importPack: importPack, midiPlayer: midiPlayer, getPlayer: function () { return player; } };
+    buildPack: buildPack, importPack: importPack, midiPlayer: midiPlayer, getPlayer: function () { return player; },
+    startTutorial: startTutorial };
   if (/[?&]demo=1/.test(location.search)) {
     Promise.all([fetch('sample/score.mid').then(function (r) { return r.arrayBuffer(); }),
       fetch('sample/Tenor.mp3').then(function (r) { return r.blob(); })]).then(function (res) {
@@ -1160,5 +1225,6 @@
     }).catch(function (e) { toast('데모 불러오기 실패: ' + e.message); });
   } else {
     renderSongList();
+    maybeFirstRunTutorial();
   }
 })();
