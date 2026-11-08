@@ -167,7 +167,8 @@
 
     // ---- 파트별 음표 정리(양자화) ----
     var STD = [3, 4, 6, 8, 9, 12, 16, 18, 24, 32, 36, 48, 72, 96, 144, 192];
-    parts.forEach(function (pt) {
+    var lyricOv = opts.lyrics || {}; // { 파트번호: { 음표위치(q): '가사' } }, 끝이 '-'면 다음 음절로 이어짐, ''이면 가사 없음
+    parts.forEach(function (pt, ptIndex) {
       var groups = []; // 같은 시작 = 화음
       pt.notes.forEach(function (n) {
         var qs = Math.round(n.start / unit);
@@ -202,11 +203,19 @@
         byTick[q] = (byTick[q] || '') + t;
       });
       var cont = false;
+      var ov = lyricOv[ptIndex] || {};
       groups.forEach(function (g) {
-        var t = byTick[g.qs];
-        if (t === undefined) return;
-        var endsWord = /\s$/.test(t) || /[,.!?;:'"]$/.test(t);
-        var text = t.trim().replace(/^-+|-+$/g, '');
+        var text, endsWord;
+        if (Object.prototype.hasOwnProperty.call(ov, g.qs)) {
+          var s = String(ov[g.qs]).trim();
+          endsWord = !/-$/.test(s);
+          text = s.replace(/^-+|-+$/g, '').trim();
+        } else {
+          var t = byTick[g.qs];
+          if (t === undefined) return;
+          endsWord = /\s$/.test(t) || /[,.!?;:'"]$/.test(t);
+          text = t.trim().replace(/^-+|-+$/g, '');
+        }
         if (!text) return;
         var syl = cont ? (endsWord ? 'end' : 'middle') : (endsWord ? 'single' : 'begin');
         g.lyric = { text: text, syllabic: syl };
@@ -347,7 +356,7 @@
               (nots ? '<notations>' + nots + '</notations>' : '') + lyr + '</note>');
           });
           var startTick = (item.first && idx === 0) ? item.g.start : (m.start + (pos - ms) * unit);
-          events.push({ part: pi, measure: mi, pos: pos - ms, startTick: startTick, endTick: m.start + (pos + val.v - ms) * unit, keys: item.g.keys, head: item.first && idx === 0 });
+          events.push({ part: pi, measure: mi, pos: pos - ms, startTick: startTick, endTick: m.start + (pos + val.v - ms) * unit, keys: item.g.keys, head: item.first && idx === 0, q: item.g.qs, lyric: item.g.lyric || null });
         }
         out.forEach(function (item) {
           var vals = decompose(item.e - item.s);

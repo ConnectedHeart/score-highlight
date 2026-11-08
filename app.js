@@ -16,6 +16,8 @@
     view: 'all',        // all | mine
     layout: 'page',     // page(좌우 페이지) | scroll(위아래)
     lyrics: 'sel',      // sel | all | none
+    editLyrics: false,  // 가사 편집 모드
+    lyricVer: 0,        // 가사를 고칠 때마다 올려 악보를 다시 불러온다
     pageW: 0, pageH: 0, page: 0,
     eventEls: [],       // events[i] → SVG 요소 배열
     elToEvent: new Map(),
@@ -145,7 +147,7 @@
     SongStore.get(id).then(function (song) {
       if (!song) { toast('곡을 찾지 못했습니다'); return; }
       state.song = song;
-      state.analysis = Midi2Xml.analyze(song.midi);
+      state.analysis = Midi2Xml.analyze(song.midi, { lyrics: song.lyrics });
       var ev = state.analysis.events, mx = 0;
       ev.forEach(function (e) { if (e.endTick - e.startTick > mx) mx = e.endTick - e.startTick; });
       state.maxDurTick = mx;
@@ -243,7 +245,8 @@
   }
 
   // ---------------- 악보 그리기 ----------------
-  function renderScore(newSong) {
+  function renderScore(newSong, keepPage) {
+    var keep = keepPage ? { page: currentPage(), top: wrap.scrollTop } : null;
     $('loading').classList.remove('hidden');
     return new Promise(function (r) { setTimeout(r, 30); }).then(function () {
       if (!state.osmd) {
@@ -254,7 +257,7 @@
         });
       }
       var osmd = state.osmd;
-      var lyricKey = state.song.id + '|' + lyricPartsKey();
+      var lyricKey = state.song.id + '|' + lyricPartsKey() + '|' + state.lyricVer;
       var load = (newSong || state.loadedKey !== lyricKey)
         ? osmd.load(xmlWithLyrics()).then(function () { state.loadedKey = lyricKey; state.loadedSongId = state.song.id; })
         : Promise.resolve();
@@ -278,6 +281,10 @@
         buildMap();
         wrap.scrollLeft = 0; wrap.scrollTop = 0;
         state.page = 0;
+        if (keep) {
+          if (paged) wrap.scrollLeft = Math.min(keep.page, pageCount() - 1) * state.pageW;
+          else wrap.scrollTop = keep.top;
+        }
         updatePageInfo();
         $('zoomVal').textContent = Math.round(state.zoom * 100) + '%';
       });
@@ -288,6 +295,7 @@
 
   // 가사: sel(선택 파트만, 전체 선택이면 모든 파트) | all | none
   function lyricPartsKey() {
+    if (state.editLyrics) return 'all'; // 가사 편집 중에는 모든 파트 가사를 보여 준다
     if (state.lyrics === 'none') return 'none';
     if (state.lyrics === 'all') return 'all';
     var v = state.song.hlPart || 'all';
@@ -509,7 +517,9 @@
       if (state.elToEvent.has(g)) { idx = state.elToEvent.get(g); break; }
       g = g.parentNode;
     }
-    if (idx === undefined || !state.track) return;
+    if (idx === undefined) return;
+    if (state.editLyrics) { editNoteLyric(idx); return; }
+    if (!state.track) return;
     var ev = state.analysis.events[idx];
     var sec = state.analysis.tickToSec(ev.startTick);
     if (state.syncMode) {
@@ -524,6 +534,118 @@
     }
     player.currentTime = Math.max(0, sec + (state.track.offset || 0) - 0.03);
   });
+
+  // ---------------- 가사 수동 변경 ----------------
+  // 고친 가사는 song.lyrics[파트][음표위치 q] = '가사'로 저장한다. 끝이 '-'면 다음 음절로 이어지는 말, ''이면 가사 없음.
+  function lyricToText(l) { return l ? l.text + (l.syllabic === 'begin' || l.syllabic === 'middle' ? '-' : '') : ''; }
+  function headEventsOf(part) {
+    return state.analysis.events.filter(function (e) { return e.head && e.part === part; })
+      .sort(function (a, b) { return a.q - b.q; });
+  }
+  function applyLyricChange(msg) {
+    saveSong();
+    state.analysis = Midi2Xml.analyze(state.song.midi, { lyrics: state.song.lyrics });
+    state.lyricVer++;
+    return renderScore(false, true).then(function () { updateHighlight(); if (msg) toast(msg); });
+  }
+  function editNoteLyric(idx) {
+    var ev = state.analysis.events[idx];
+    // 붙임줄로 이어진 뒤 조각을 눌렀으면 그 음의 첫 조각으로
+    if (!ev.head) {
+      var heads = headEventsOf(ev.part).filter(function (h) { return h.startTick <= ev.startTick; });
+      ev = heads[heads.length - 1];
+      if (!ev) return;
+    }
+    var partName = state.analysis.parts[ev.part].name;
+    var cur = lyricToText(ev.lyric);
+    var v = window.prompt(partName + ' ' + (ev.measure + (state.analysis.pickup > 0 ? 0 : 1)) + '마디 가사\n(다음 음절로 이어지면 끝에 -, 비우면 가사 없음)', cur);
+    if (v === null) return;
+    v = v.trim();
+    if (v === cur) return;
+    var L = state.song.lyrics || (state.song.lyrics = {});
+    (L[ev.part] = L[ev.part] || {})[ev.q] = v;
+    applyLyricChange('가사를 바꿨습니다');
+  }
+  function setEditLyrics(on) {
+    state.editLyrics = on;
+    $('editBanner').classList.toggle('hidden', !on);
+    if (on) pause();
+    renderScore(false, true).then(updateHighlight);
+  }
+  $('editLyricsBtn').onclick = function () { $('panel').classList.add('hidden'); setEditLyrics(true); };
+  $('editDoneBtn').onclick = function () { setEditLyrics(false); };
+
+  // 파트 가사 통째로 입력: 띄어쓰기로 단어, '-'로 음절, '_'는 가사 없는 음(늘임). 한글 단어는 글자마다 한 음절.
+  function splitLyrics(text) {
+    var out = [];
+    text.split(/\s+/).forEach(function (tok) {
+      if (!tok) return;
+      if (/^_+$/.test(tok)) { for (var i = 0; i < tok.length; i++) out.push(''); return; }
+      var syl = tok.split('-').filter(function (s) { return s !== ''; });
+      if (syl.length === 1 && /[가-힣]/.test(tok) && tok.length > 1 && !/-/.test(tok)) syl = Array.from(tok);
+      syl.forEach(function (s, i) {
+        if (/^_+$/.test(s)) { out.push(''); return; }
+        out.push(i < syl.length - 1 ? s + '-' : s);
+      });
+    });
+    return out;
+  }
+  function currentPartText(part) {
+    // 단어마다 음절 조각을 모아, 모두 한글 한 글자면 붙여 쓰고(글자마다 음절로 다시 나뉨) 아니면 '-'로 잇는다
+    var words = [], pieces = [];
+    function flush() {
+      if (!pieces.length) return;
+      var allSingleHangul = pieces.every(function (p) { return /^[가-힣]$/.test(p); });
+      words.push(pieces.join(allSingleHangul && pieces.length > 1 ? '' : '-'));
+      pieces = [];
+    }
+    headEventsOf(part).forEach(function (e) {
+      var l = e.lyric;
+      if (!l) { flush(); words.push('_'); return; }
+      if (l.syllabic === 'begin' || l.syllabic === 'single') flush();
+      pieces.push(l.text);
+      if (l.syllabic === 'single' || l.syllabic === 'end') flush();
+    });
+    flush();
+    // 끝쪽의 가사 없는 음은 생략
+    while (words.length && words[words.length - 1] === '_') words.pop();
+    return words.join(' ');
+  }
+  function openLyricDialog() {
+    var sel = $('lyricPartSel');
+    sel.innerHTML = '';
+    state.analysis.parts.forEach(function (p, i) {
+      var o = document.createElement('option'); o.value = String(i); o.textContent = p.name; sel.appendChild(o);
+    });
+    var hp = state.song.hlPart && state.song.hlPart !== 'all' ? state.song.hlPart : '0';
+    sel.value = hp;
+    $('lyricText').value = currentPartText(+sel.value);
+    $('panel').classList.add('hidden');
+    $('lyricDialog').classList.remove('hidden');
+  }
+  $('lyricPartSel').onchange = function () { $('lyricText').value = currentPartText(+this.value); };
+  $('lyricAllBtn').onclick = openLyricDialog;
+  $('lyricCancel').onclick = function () { $('lyricDialog').classList.add('hidden'); };
+  $('lyricApply').onclick = function () {
+    var part = +$('lyricPartSel').value;
+    var syl = splitLyrics($('lyricText').value);
+    var heads = headEventsOf(part);
+    var map = {};
+    heads.forEach(function (e, i) { map[e.q] = i < syl.length ? syl[i] : ''; });
+    var L = state.song.lyrics || (state.song.lyrics = {});
+    L[part] = map;
+    $('lyricDialog').classList.add('hidden');
+    var extra = syl.length - heads.length;
+    applyLyricChange(extra > 0 ? '가사를 넣었습니다. 음표보다 음절이 ' + extra + '개 많아 뒤쪽은 빠졌습니다'
+      : syl.length < heads.length ? '가사를 넣었습니다(음표 ' + heads.length + '개 중 ' + syl.length + '개)' : '가사를 넣었습니다');
+  };
+  $('lyricReset').onclick = function () {
+    var part = +$('lyricPartSel').value;
+    if (!confirm(state.analysis.parts[part].name + ' 파트 가사를 MIDI 원래 가사로 되돌릴까요?')) return;
+    if (state.song.lyrics) delete state.song.lyrics[part];
+    $('lyricDialog').classList.add('hidden');
+    applyLyricChange('원래 가사로 되돌렸습니다');
+  };
 
   $('tapBtn').onclick = function () {
     state.syncMode = !state.syncMode;

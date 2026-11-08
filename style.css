@@ -69,6 +69,8 @@ button.wide { width: 100%; padding: 14px; font-size: 16px; }
 .row input[type=number] { width: 80px; padding: 6px; border: 1px solid var(--line); border-radius: 8px; text-align: right; }
 .row select { padding: 6px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); }
 
+.edit-banner { display: flex; align-items: center; justify-content: space-between; gap: 8px; background: #fff4d6; color: #6b4e00; padding: 8px 12px; font-size: 14px; border-bottom: 1px solid #f0d78c; }
+.lyric-text { width: 100%; margin: 8px 0; padding: 10px; border: 1px solid var(--line); border-radius: 10px; font: inherit; font-size: 15px; line-height: 1.6; resize: vertical; }
 .toast { position: fixed; left: 50%; bottom: 140px; transform: translateX(-50%); background: rgba(20,24,35,0.9); color: #fff; padding: 10px 16px; border-radius: 10px; font-size: 14px; z-index: 30; max-width: 90%; text-align: center; }
 
 /* 악보에서 지금 부르는 음표 */

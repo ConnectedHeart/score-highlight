@@ -38,6 +38,11 @@
     <div id="trackBar" class="track-bar"></div>
     <div id="partBar" class="track-bar part-bar" aria-label="하이라이트할 파트"></div>
 
+    <div id="editBanner" class="edit-banner hidden">
+      <span>가사 편집 중: 고칠 음표를 누르세요</span>
+      <button id="editDoneBtn" class="small primary">끝내기</button>
+    </div>
+
     <div id="scoreWrap" class="score-wrap">
       <div id="score"></div>
       <div id="loading" class="loading hidden">악보 그리는 중…</div>
@@ -96,6 +101,10 @@
         </label>
         <label class="row">자동 스크롤 <input id="autoScroll" type="checkbox" checked></label>
         <div class="row">
+          <span>가사 고치기</span>
+          <span><button id="editLyricsBtn" class="small">음표 눌러 고치기</button> <button id="lyricAllBtn" class="small">파트 전체 입력</button></span>
+        </div>
+        <div class="row">
           <button id="addAudioBtn" class="small">음원 추가</button>
           <button id="autoSyncBtn" class="small">시작 위치 자동 맞춤</button>
         </div>
@@ -107,6 +116,20 @@
       </div>
     </div>
   </section>
+
+  <!-- 파트 가사 전체 입력 -->
+  <div id="lyricDialog" class="panel hidden">
+    <div class="panel-box">
+      <h2>파트 가사 전체 입력</h2>
+      <label class="row">파트 <select id="lyricPartSel"></select></label>
+      <textarea id="lyricText" class="lyric-text" rows="8" spellcheck="false"></textarea>
+      <p class="hint">음표 순서대로 한 음절씩 들어갑니다. 띄어쓰기 = 단어 구분, <b>-</b> = 음절 구분(예: mer-ry), <b>_</b> = 가사 없는 음(늘여 부르기). 한글 단어는 글자마다 한 음절로 나뉩니다.</p>
+      <div class="row">
+        <button id="lyricReset" class="danger small">원래 가사로</button>
+        <span><button id="lyricCancel" class="small">취소</button> <button id="lyricApply" class="primary small">적용</button></span>
+      </div>
+    </div>
+  </div>
 
   <input id="filePick" type="file" multiple accept=".mid,.midi,audio/*,.mp3,.m4a,.wav,.ogg" class="hidden">
   <input id="audioPick" type="file" multiple accept="audio/*,.mp3,.m4a,.wav,.ogg" class="hidden">
