@@ -384,7 +384,8 @@
       endTick: endTick,
       firstTick: firstTick,
       parts: parts.map(function (pt) {
-        return { name: pt.name, channel: pt.channel, avgPitch: pt.avgPitch, noteCount: pt.noteCount, firstTick: pt.firstTick, clef: pt.clef };
+        return { name: pt.name, channel: pt.channel, avgPitch: pt.avgPitch, noteCount: pt.noteCount, firstTick: pt.firstTick, clef: pt.clef,
+          notes: pt.notes.map(function (n) { return { start: n.start, end: n.end, key: n.key }; }) };
       }),
       tickToSec: tickToSec,
       secToTick: secToTick

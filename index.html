@@ -22,7 +22,7 @@
     </header>
     <div class="list-body">
       <button id="addSongBtn" class="primary wide">+ 새 곡 추가 (MIDI + 음원 선택)</button>
-      <p class="hint">MIDI 파일 1개와 음원(6파트 전체 믹스 mp3 등)을 한 번에 골라 주세요. 재생 화면 위쪽에서 빨갛게 표시할 파트를 고릅니다.</p>
+      <p class="hint">MIDI 파일 1개와 음원(6파트 전체 믹스 mp3 등)을 한 번에 골라 주세요. 음원이 없어도 MIDI 소리로 들을 수 있습니다. 다른 사람이 보낸 곡 묶음(.zip)을 고르면 그대로 가져옵니다.</p>
       <ul id="songList" class="song-list"></ul>
     </div>
   </section>
@@ -56,19 +56,41 @@
         <span id="durTime">0:00</span>
       </div>
       <div class="btn-row">
+        <button id="loopBtn" class="small tool">구간반복</button>
         <button id="back5" class="icon">↺5</button>
         <button id="playBtn" class="play">▶</button>
         <button id="fwd5" class="icon">5↻</button>
+        <button id="mixBtn" class="small tool">믹서</button>
+      </div>
+      <div class="tool-row">
         <select id="speedSel" aria-label="속도">
-          <option value="0.5">0.5x</option>
-          <option value="0.75">0.75x</option>
-          <option value="0.9">0.9x</option>
-          <option value="1" selected>1x</option>
-          <option value="1.1">1.1x</option>
+          <option value="0.5">속도 0.5x</option>
+          <option value="0.75">속도 0.75x</option>
+          <option value="0.9">속도 0.9x</option>
+          <option value="1" selected>속도 1x</option>
+          <option value="1.1">속도 1.1x</option>
         </select>
-        <button id="tapBtn" class="small" title="첫 음이 들릴 때 누르면 시작 위치를 맞춥니다">싱크</button>
+        <button id="tapBtn" class="small" title="재생 중 지금 들리는 음표를 누르면 시작 위치를 맞춥니다">싱크</button>
       </div>
     </footer>
+
+    <!-- 믹서(MIDI 소리) -->
+    <div id="mixPanel" class="panel hidden">
+      <div class="panel-box">
+        <h2>믹서 <span class="hint" id="mixHint"></span></h2>
+        <div class="row quick">
+          <button id="mixMine" class="small">내 파트 크게</button>
+          <button id="mixMinus" class="small">내 파트 빼고</button>
+          <button id="mixEven" class="small">모두 같게</button>
+        </div>
+        <div id="mixRows"></div>
+        <label class="row">조옮김(반음)
+          <span><button id="trDown" class="small">−</button> <span id="trVal">0</span> <button id="trUp" class="small">+</button></span>
+        </label>
+        <p class="hint">"MIDI 소리"로 들을 때 파트별 볼륨과 조옮김이 적용됩니다. mp3 음원은 파트가 섞여 있어 따로 조절할 수 없습니다. 조옮김은 소리만 바뀌고 악보는 그대로입니다.</p>
+        <div class="row"><span></span><button id="mixClose" class="primary small">닫기</button></div>
+      </div>
+    </div>
 
     <!-- 설정 패널 -->
     <div id="panel" class="panel hidden">
@@ -109,6 +131,10 @@
           <button id="autoSyncBtn" class="small">시작 위치 자동 맞춤</button>
         </div>
         <div class="row">
+          <span>단원과 공유</span>
+          <button id="exportBtn" class="small">곡 묶음 내보내기</button>
+        </div>
+        <div class="row">
           <button id="deleteSongBtn" class="danger small">이 곡 삭제</button>
           <button id="closePanel" class="primary small">닫기</button>
         </div>
@@ -131,7 +157,7 @@
     </div>
   </div>
 
-  <input id="filePick" type="file" multiple accept=".mid,.midi,audio/*,.mp3,.m4a,.wav,.ogg" class="hidden">
+  <input id="filePick" type="file" multiple class="hidden">
   <input id="audioPick" type="file" multiple accept="audio/*,.mp3,.m4a,.wav,.ogg" class="hidden">
   <audio id="player" preload="auto"></audio>
   <div id="toast" class="toast hidden"></div>
@@ -139,6 +165,8 @@
   <script src="lib/opensheetmusicdisplay.min.js"></script>
   <script src="midi2xml.js"></script>
   <script src="store.js"></script>
+  <script src="midisynth.js"></script>
+  <script src="pack.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

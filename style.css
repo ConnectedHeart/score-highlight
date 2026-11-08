@@ -51,7 +51,7 @@ button.wide { width: 100%; padding: 14px; font-size: 16px; }
 .score-wrap.paged { overflow: hidden; touch-action: pan-y pinch-zoom; }
 #score.paged { display: flex; height: 100%; min-height: 0; }
 #score.paged > div { flex: none; overflow: hidden; }
-.page-info { position: absolute; right: 10px; bottom: 128px; background: rgba(20,24,35,0.65); color: #fff; font-size: 12px; padding: 3px 9px; border-radius: 999px; pointer-events: none; z-index: 5; font-variant-numeric: tabular-nums; }
+.page-info { position: absolute; right: 10px; bottom: 172px; background: rgba(20,24,35,0.65); color: #fff; font-size: 12px; padding: 3px 9px; border-radius: 999px; pointer-events: none; z-index: 5; font-variant-numeric: tabular-nums; }
 #songView { position: relative; }
 .loading { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(255,255,255,0.85); color: var(--muted); }
 
@@ -59,6 +59,16 @@ button.wide { width: 100%; padding: 14px; font-size: 16px; }
 .seek-row { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
 .seek-row input { flex: 1; accent-color: var(--accent); }
 .btn-row { display: flex; align-items: center; justify-content: center; gap: 10px; margin-top: 6px; }
+.btn-row .tool { min-width: 64px; }
+.btn-row .tool.on, .tool-row .on { background: var(--accent); color: #fff; border-color: var(--accent); }
+.tool-row { display: flex; align-items: center; justify-content: center; gap: 10px; margin-top: 6px; }
+.tool-row select { border: 1px solid var(--line); border-radius: 10px; padding: 6px; background: var(--panel); font-size: 14px; }
+.row.quick { justify-content: flex-start; gap: 6px; }
+.mix-row { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--line); font-size: 14px; }
+.mix-row .nm { width: 72px; flex: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mix-row input[type=range] { flex: 1; accent-color: var(--accent); }
+.mix-row .mute { flex: none; width: 52px; padding: 4px 0; font-size: 13px; }
+.mix-row .mute.on { background: #888; color: #fff; }
 .btn-row .play { width: 56px; height: 56px; border-radius: 50%; background: var(--accent); color: #fff; border: none; font-size: 22px; }
 .btn-row select { border: 1px solid var(--line); border-radius: 10px; padding: 6px; background: var(--panel); }
 
