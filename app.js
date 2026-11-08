@@ -1476,6 +1476,81 @@
   }
   if (navigator.storage && navigator.storage.persist) { navigator.storage.persist().catch(function () { /* 무시 */ }); }
 
+  // ---------------- 안드로이드 앱 라이브 업데이트 ----------------
+  // 앱을 열 때 웹 주소(GitHub Pages)에 새 버전이 있으면 파일을 받아 폰 안(앱 전용 폴더)에 저장하고
+  // 그 폴더로 앱 화면을 바꿔 연다. 주소(https://localhost)는 그대로라 저장한 곡·녹음이 유지된다.
+  // 새 APK를 설치하면 Capacitor가 APK 안의 파일로 되돌린다(빌드마다 versionCode를 올림).
+  var LIVE_BASE = 'https://connectedheart.github.io/score-highlight/';
+  var liveBusy = false;
+  function liveUpdate(manual) {
+    var Pl = window.Capacitor && window.Capacitor.Plugins;
+    if (!isNative || liveBusy || !Pl || !Pl.Filesystem || !Pl.WebView) { if (manual) toast('이 기기에서는 쓰지 않습니다'); return; }
+    if (!player.paused || state.rec) return; // 재생·녹음 중에는 다음 기회에
+    liveBusy = true;
+    var local = null;
+    fetch('version.json', { cache: 'no-store' }).then(function (r) { return r.ok ? r.json() : null; }).catch(function () { return null; })
+      .then(function (l) {
+        local = l;
+        return fetch(LIVE_BASE + 'version.json?t=' + Date.now(), { cache: 'no-store' }).then(function (r) {
+          if (!r.ok) throw new Error('버전 정보 HTTP ' + r.status);
+          return r.json();
+        });
+      })
+      .then(function (remote) {
+        if (!remote || !remote.version || !remote.files || !remote.files.length) return;
+        if (local && local.version && remote.version <= local.version) { if (manual) toast('최신 버전입니다 (' + local.version + ')'); return; }
+        toast('새 버전을 받는 중…', 6000);
+        var dir = 'live/' + remote.version;
+        var chain = Promise.resolve();
+        remote.files.forEach(function (f) {
+          chain = chain.then(function () {
+            return fetch(LIVE_BASE + f + '?v=' + remote.version, { cache: 'no-store' }).then(function (r) {
+              if (!r.ok) throw new Error(f + ' HTTP ' + r.status);
+              return r.arrayBuffer();
+            }).then(function (buf) {
+              return Pl.Filesystem.writeFile({ path: dir + '/' + f, data: SongPack.toBase64(new Uint8Array(buf)), directory: 'DATA', recursive: true });
+            });
+          });
+        });
+        return chain.then(function () {
+          return Pl.Filesystem.getUri({ path: dir, directory: 'DATA' });
+        }).then(function (u) {
+          if (!player.paused || state.rec) { liveBusy = false; return; } // 그 사이 재생을 시작했으면 다음에
+          var p = decodeURIComponent(u.uri.replace(/^file:\/\//, ''));
+          try { localStorage.setItem('livePending', remote.version); } catch (e) { /* 무시 */ }
+          toast('새 버전으로 바꿉니다', 2000);
+          return Pl.WebView.setServerBasePath({ path: p }); // 화면이 새 버전으로 다시 열린다
+        });
+      })
+      .catch(function (e) { console.warn('라이브 업데이트 실패', e); if (manual) toast('업데이트 확인 실패: ' + e.message, 4000); })
+      .then(function () { liveBusy = false; });
+  }
+  // 새 버전으로 막 바뀌어 열렸으면 그 위치를 기억시켜 다음 실행에도 새 버전으로 연다
+  function liveConfirm() {
+    var Pl = window.Capacitor && window.Capacitor.Plugins;
+    var pending = null;
+    try { pending = localStorage.getItem('livePending'); } catch (e) { /* 무시 */ }
+    if (!isNative || !pending || !Pl || !Pl.WebView) return Promise.resolve();
+    return fetch('version.json', { cache: 'no-store' }).then(function (r) { return r.json(); }).then(function (v) {
+      if (v && v.version === pending) {
+        return Pl.WebView.persistServerBasePath().then(function () {
+          try { localStorage.removeItem('livePending'); } catch (e) { /* 무시 */ }
+          toast('새 버전으로 업데이트했습니다 (' + v.version + ')', 3000);
+        });
+      }
+    }).catch(function () { /* 무시 */ });
+  }
+  fetch('version.json', { cache: 'no-store' }).then(function (r) { return r.json(); })
+    .then(function (v) { $('appVer').textContent = v.version; }).catch(function () { $('appVer').textContent = '(개발용)'; });
+  $('updateBtn').onclick = function () {
+    if (isNative) { toast('업데이트 확인 중…'); liveUpdate(true); }
+    else { toast('새로 고칩니다'); setTimeout(function () { location.reload(); }, 500); }
+  };
+  if (isNative) {
+    liveConfirm().then(function () { setTimeout(liveUpdate, 1500); });
+    document.addEventListener('visibilitychange', function () { if (!document.hidden) liveUpdate(); });
+  }
+
   // 안드로이드 뒤로 가기 버튼
   var Cap = window.Capacitor;
   if (Cap && Cap.Plugins && Cap.Plugins.App) {
