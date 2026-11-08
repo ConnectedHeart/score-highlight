@@ -139,5 +139,38 @@ body.focus .page-info { bottom: calc(70px + var(--safe-bottom)); }
 .tut-nav button { min-width: 84px; }
 .toast { position: fixed; left: 50%; bottom: 140px; transform: translateX(-50%); background: rgba(20,24,35,0.9); color: #fff; padding: 10px 16px; border-radius: 10px; font-size: 14px; z-index: 30; max-width: 90%; text-align: center; }
 
+/* 아래 도구 줄: 버튼이 많아 한 줄로 두고 좌우로 밀어 본다 */
+.transport .tool-row { justify-content: flex-start; overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch; touch-action: pan-x; padding-bottom: 2px; }
+.transport .tool-row::-webkit-scrollbar { display: none; }
+.transport .tool-row > * { flex: none; }
+.transport .tool-row > :first-child { margin-left: auto; }
+.transport .tool-row > :last-child { margin-right: auto; }
+.panel-box h2.sub { font-size: 15px; margin: 14px 0 2px; color: var(--muted); }
+
+/* 내 음정 */
+.pitch-meter { position: fixed; left: 50%; transform: translateX(-50%); z-index: 14; width: min(92vw, 360px); background: rgba(20, 24, 35, 0.86); color: #fff;
+  border-radius: 12px; padding: 6px 10px 8px; pointer-events: none; box-shadow: 0 2px 10px rgba(0,0,0,0.25); font-variant-numeric: tabular-nums; }
+.pm-text { display: flex; justify-content: space-between; font-size: 14px; margin-bottom: 5px; }
+.pm-bar { position: relative; height: 10px; border-radius: 5px; background: linear-gradient(90deg, #c62828, #f9a825 30%, #43a047 42%, #43a047 58%, #f9a825 70%, #c62828); opacity: 0.9; }
+.pm-zone { position: absolute; left: 50%; top: -3px; bottom: -3px; width: 2px; background: #fff; transform: translateX(-1px); }
+.pm-needle { position: absolute; top: -5px; width: 12px; height: 20px; margin-left: -6px; border-radius: 4px; background: #fff; border: 2px solid #1d2433; left: 50%; transition: left 0.08s linear; display: none; }
+.pitch-meter.good #pmMine { color: #81c784; } .pitch-meter.near #pmMine { color: #ffd54f; } .pitch-meter.off #pmMine { color: #ff8a80; }
+#score .pitch-ok, #score .pitch-ok * { fill: #2e7d32; stroke: #2e7d32; }
+#score .pitch-near, #score .pitch-near * { fill: #ef8f00; stroke: #ef8f00; }
+#score .pitch-off, #score .pitch-off * { fill: #c62828; stroke: #c62828; }
+#pitchBtn.on, #metroBtn.on { background: var(--accent); color: #fff; border-color: var(--accent); }
+.count-overlay { position: fixed; left: 50%; top: 40%; transform: translate(-50%, -50%); z-index: 25; background: rgba(31, 42, 68, 0.88); color: #fff;
+  font-size: 54px; font-weight: 800; width: 120px; height: 120px; border-radius: 50%; display: flex; align-items: center; justify-content: center; pointer-events: none; }
+
+/* 메모 */
+#score .memo-mark { fill: #1565c0; font-weight: 700; font-family: inherit; pointer-events: none; paint-order: stroke; stroke: #fff; }
+.memo-quick { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+.memo-quick button { padding: 6px 11px; font-size: 15px; }
+.memo-text { width: 100%; padding: 10px; border: 1px solid var(--line); border-radius: 10px; font-size: 16px; margin-bottom: 4px; }
+#memoBanner { background: #e3f0fd; color: #0d3c78; border-bottom-color: #b5d3f5; }
+#bookmarkList li { display: flex; align-items: center; justify-content: space-between; gap: 6px; flex-wrap: wrap; }
+#bookmarkList li .nm { font-weight: 600; }
+#measureInput { width: 70px; }
+
 /* 악보에서 지금 부르는 음표 */
 #score .hl, #score .hl * { fill: var(--accent) !important; stroke: var(--accent) !important; }

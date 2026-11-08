@@ -80,6 +80,11 @@
     this.volumes[part] = v;
     if (this._gains[part] && this._ctx) this._gains[part].gain.setTargetAtTime(v, this._ctx.currentTime, 0.02);
   };
+  // 기준음(A4 Hz)
+  P.setTuning = function (hz) {
+    this.tuning = hz;
+    if (!this.paused) { var t = this.currentTime; this._stopVoices(); this._seekInternal(t); }
+  };
   P.setTranspose = function (semi) {
     this.transpose = semi;
     if (!this.paused) { var t = this.currentTime; this._stopVoices(); this._seekInternal(t); }
@@ -165,7 +170,7 @@
     var ctx = this._ctx;
     var vol = this.volumes[n.part];
     if (vol !== undefined && vol <= 0.001) return;
-    var f = 440 * Math.pow(2, (n.key + this.transpose - 69) / 12);
+    var f = (this.tuning || 440) * Math.pow(2, (n.key + this.transpose - 69) / 12);
     var o1 = ctx.createOscillator(), o2 = ctx.createOscillator();
     o1.type = 'triangle'; o1.frequency.value = f;
     o2.type = 'sine'; o2.frequency.value = f * 2;

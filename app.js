@@ -162,6 +162,7 @@
       showSong();
       state.track = null;
       state.loop = null; state.loopStep = 0; updateLoopBtn();
+      resetPracticeForSong();
       if (!song.hlPart) song.hlPart = 'all';
       if (!song.mix || !song.mix.vol || song.mix.vol.length !== state.analysis.parts.length) {
         song.mix = { vol: state.analysis.parts.map(function () { return 0.8; }), mute: state.analysis.parts.map(function () { return false; }), transpose: 0 };
@@ -216,6 +217,7 @@
   }
   enableDragScroll($('partBar'));
   enableDragScroll($('trackBar'));
+  enableDragScroll(document.querySelector('.transport .tool-row'));
 
   // ---------------- 하이라이트 파트 선택 ----------------
   function renderParts() {
@@ -349,6 +351,7 @@
         setTimeout(onWrapResize, 50);
         buildMap();
         drawLoopMarks();
+        drawMemos();
         wrap.scrollLeft = 0; wrap.scrollTop = 0;
         state.page = 0;
         if (keep) {
@@ -460,9 +463,20 @@
       if (tag === 'BUTTON') tg.blur();
       e.preventDefault(); $('playBtn').click(); return;
     }
-    if (state.layout !== 'page') return;
-    if (e.key === 'ArrowRight' || e.key === 'PageDown') { state.userScrollUntil = Date.now() + 4000; goPage(currentPage() + 1); }
-    else if (e.key === 'ArrowLeft' || e.key === 'PageUp') { state.userScrollUntil = Date.now() + 4000; goPage(currentPage() - 1); }
+    // 블루투스 악보 넘김 페달은 보통 ←/→, ↑/↓, PageUp/PageDown 키를 보낸다
+    var fwd = e.key === 'ArrowRight' || e.key === 'PageDown' || e.key === 'ArrowDown';
+    var bwd = e.key === 'ArrowLeft' || e.key === 'PageUp' || e.key === 'ArrowUp';
+    if (e.key === 'Enter' && tag !== 'BUTTON') { e.preventDefault(); $('playBtn').click(); return; }
+    if (!fwd && !bwd) return;
+    e.preventDefault();
+    if (pedalMode() === 'play') {
+      if (fwd) $('playBtn').click();
+      else player.currentTime = Math.max(0, player.currentTime - 5);
+      return;
+    }
+    state.userScrollUntil = Date.now() + 4000;
+    if (state.layout === 'page') goPage(currentPage() + (fwd ? 1 : -1));
+    else wrap.scrollTop += (fwd ? 1 : -1) * wrap.clientHeight * 0.8;
   });
 
   function buildMap() {
@@ -599,31 +613,37 @@
 
   function play() {
     if (!state.track) { toast('재생할 음원이 없습니다.'); return; }
+    if (state.counting) return;
     // 구간 반복 중인데 구간 밖에 있으면 구간 처음부터
     if (state.loop && !state.recPlay) {
       var s = scoreSec();
       if (s < state.loop.a - 0.05 || s >= state.loop.b) player.currentTime = Math.max(0, state.loop.a + trackOffset());
     }
     if (player === midiPlayer) iosUnmute();
-    var p = player.play();
-    if (p && p.catch) p.catch(function (e) { toast('재생하지 못했습니다: ' + e.message); });
+    // 카운트인: 재생 전에 박자를 세어 준다
+    countInThen(function () {
+      var p = player.play();
+      if (p && p.catch) p.catch(function (e) { toast('재생하지 못했습니다: ' + e.message); });
+    });
   }
-  function pause() { player.pause(); }
+  function pause() { cancelCountIn(); player.pause(); }
   function setPlayIcon(playing) {
     $('playBtn').textContent = playing ? '❚❚' : '▶';
     $('miniPlay').textContent = playing ? '❚❚' : '▶';
   }
   [audioEl, midiPlayer].forEach(function (pl) {
-    pl.addEventListener('play', function () { if (pl !== player) return; setPlayIcon(true); cancelAnimationFrame(raf); raf = requestAnimationFrame(loop); });
+    pl.addEventListener('play', function () { if (pl !== player) return; setPlayIcon(true); cancelAnimationFrame(raf); raf = requestAnimationFrame(loop); onPracticePlay(); });
     pl.addEventListener('pause', function () {
       if (pl !== player) return;
       setPlayIcon(false); cancelAnimationFrame(raf); updateHighlight(); updateTimeUi();
+      onPracticePause();
       if (state.rec) stopRecording();
       if (state.recPlay) stopRecPlayback();
     });
     pl.addEventListener('ended', function () {
       if (pl !== player) return;
       setPlayIcon(false);
+      onPracticePause();
       if (state.rec) stopRecording();
     });
     pl.addEventListener('loadedmetadata', function () { if (pl === player) updateTimeUi(); });
@@ -758,7 +778,10 @@
   });
   $('seek').addEventListener('change', function () { seeking = false; });
 
-  $('playBtn').onclick = function () { if (player.paused) play(); else pause(); };
+  $('playBtn').onclick = function () {
+    if (state.counting) { cancelCountIn(); if (state.rec) stopRecording(); return; } // 세는 중에 누르면 취소
+    if (player.paused) play(); else pause();
+  };
   $('back5').onclick = function () { player.currentTime = Math.max(0, player.currentTime - 5); };
   $('fwd5').onclick = function () { player.currentTime = Math.min(player.duration || 0, player.currentTime + 5); };
   $('speedSel').onchange = function () { player.playbackRate = parseFloat(this.value); };
@@ -773,10 +796,11 @@
     }
     if (idx === undefined) {
       // 음표가 아닌 빈 곳을 누르면 버튼 숨김/보임(구간 고르기·가사 편집 중에는 제외)
-      if (!state.loopStep && !state.editLyrics && !state.syncMode) setFocus(!document.body.classList.contains('focus'));
+      if (!state.loopStep && !state.editLyrics && !state.syncMode && !state.memoMode) setFocus(!document.body.classList.contains('focus'));
       return;
     }
     if (state.editLyrics) { editNoteLyric(idx); return; }
+    if (state.memoMode) { openMemo(idx); return; }
     if (state.loopStep) { loopPick(state.analysis.events[idx]); return; }
     if (!state.track) return;
     var ev = state.analysis.events[idx];
@@ -833,10 +857,13 @@
       sess.recStart = performance.now();
       sess.scoreStart = scoreSec();
       if (player === midiPlayer) iosUnmute();
-      var p = player.play();
-      Promise.resolve(p).then(function () {
-        sess.lead = (performance.now() - sess.recStart) / 1000;
-      }).catch(function (e) { toast('반주를 재생하지 못했습니다: ' + e.message); stopRecording(); });
+      countInThen(function () {
+        if (state.rec !== sess) return;
+        var p = player.play();
+        Promise.resolve(p).then(function () {
+          sess.lead = (performance.now() - sess.recStart) / 1000;
+        }).catch(function (e) { toast('반주를 재생하지 못했습니다: ' + e.message); stopRecording(); });
+      });
       $('recBtn').classList.add('on');
       clearInterval(recTimer);
       recTimer = setInterval(function () {
@@ -857,6 +884,7 @@
     clearInterval(recTimer);
     $('recBtn').classList.remove('on');
     $('recBtn').textContent = '🎙 녹음';
+    cancelCountIn();
     try { if (s.recorder.state !== 'inactive') s.recorder.stop(); } catch (e) { finishRecording(s); }
     s.stream.getTracks().forEach(function (t) { t.stop(); });
     if (!player.paused) pause();
@@ -1066,7 +1094,7 @@
     var files = [];
     var meta = {
       format: 'score-highlight-pack', version: 1, title: s.title, midiName: s.midiName,
-      hlPart: s.hlPart, lyrics: s.lyrics || null, mix: s.mix || null, tracks: []
+      hlPart: s.hlPart, lyrics: s.lyrics || null, mix: s.mix || null, memos: s.memos || null, bookmarks: s.bookmarks || null, tracks: []
     };
     var jobs = s.tracks.map(function (t, i) {
       var fname = 'audio/' + (i + 1) + '_' + safeName(t.name) + '.' + audioExt(t);
@@ -1120,6 +1148,7 @@
       var song = {
         id: uid(), title: meta.title || baseName(file.name), midiName: meta.midiName || meta.midiFile, midi: midiBuf,
         hlPart: meta.hlPart || 'all', lyrics: meta.lyrics || undefined, mix: meta.mix || undefined,
+        memos: meta.memos || undefined, bookmarks: meta.bookmarks || undefined,
         tracks: (meta.tracks || []).filter(function (t) { return entries[t.file]; }).map(function (t) {
           var ext = (/\.([a-z0-9]+)$/i.exec(t.file) || [, 'mp3'])[1].toLowerCase();
           var type = ext === 'mp3' ? 'audio/mpeg' : ext === 'm4a' ? 'audio/mp4' : ext === 'wav' ? 'audio/wav' : ext === 'ogg' ? 'audio/ogg' : 'application/octet-stream';
@@ -1583,6 +1612,463 @@
     });
   }
 
+  // ================= 전문가용 연습 도구 =================
+  var NOTE_NAMES = ['도', '도♯', '레', '미♭', '미', '파', '파♯', '솔', '솔♯', '라', '시♭', '시'];
+  function noteName(midi) { var m = Math.round(midi); return NOTE_NAMES[((m % 12) + 12) % 12] + (Math.floor(m / 12) - 1); }
+  var prefs = { metro: false, metroVol: 0.6, countIn: 0, tuneA: 440, pedal: 'page' };
+  try {
+    var pv = JSON.parse(localStorage.getItem('practicePrefs') || '{}');
+    Object.keys(prefs).forEach(function (k) { if (pv[k] !== undefined) prefs[k] = pv[k]; });
+  } catch (e) { /* 무시 */ }
+  function savePrefs() { try { localStorage.setItem('practicePrefs', JSON.stringify(prefs)); } catch (e) { /* 무시 */ } }
+  function pedalMode() { return prefs.pedal; }
+  midiPlayer.setTuning(prefs.tuneA);
+
+  // 메트로놈·카운트인·시작음이 함께 쓰는 소리 장치
+  var toneCtx = null;
+  function getToneCtx() {
+    var Ctx = window.AudioContext || window.webkitAudioContext;
+    if (!Ctx) return null;
+    if (!toneCtx) toneCtx = new Ctx();
+    if (toneCtx.state === 'suspended' && toneCtx.resume) toneCtx.resume();
+    return toneCtx;
+  }
+  function click(when, accent, vol) {
+    var ctx = getToneCtx(); if (!ctx) return;
+    var o = ctx.createOscillator(), g = ctx.createGain();
+    o.type = 'square'; o.frequency.value = accent ? 1760 : 1175;
+    var v = (vol === undefined ? prefs.metroVol : vol) * (accent ? 0.5 : 0.32);
+    g.gain.setValueAtTime(0, when);
+    g.gain.linearRampToValueAtTime(v, when + 0.002);
+    g.gain.exponentialRampToValueAtTime(0.0005, when + 0.05);
+    o.connect(g); g.connect(ctx.destination);
+    o.start(when); o.stop(when + 0.06);
+  }
+  function tone(midi, when, dur, vol) {
+    var ctx = getToneCtx(); if (!ctx) return;
+    var f = prefs.tuneA * Math.pow(2, (midi - 69) / 12);
+    var o1 = ctx.createOscillator(), o2 = ctx.createOscillator(), g2 = ctx.createGain(), env = ctx.createGain();
+    o1.type = 'triangle'; o1.frequency.value = f; o2.type = 'sine'; o2.frequency.value = f * 2; g2.gain.value = 0.2;
+    var peak = vol || 0.3;
+    env.gain.setValueAtTime(0, when);
+    env.gain.linearRampToValueAtTime(peak, when + 0.03);
+    env.gain.setValueAtTime(peak * 0.85, when + dur - 0.15);
+    env.gain.linearRampToValueAtTime(0, when + dur);
+    o1.connect(env); o2.connect(g2); g2.connect(env); env.connect(ctx.destination);
+    o1.start(when); o2.start(when); o1.stop(when + dur + 0.05); o2.stop(when + dur + 0.05);
+  }
+
+  // 박: 6/8·9/8·12/8은 점4분음표를 한 박으로 센다
+  function beatInfo(m) {
+    var a = state.analysis, s = m.sig || { num: 4, den: 4 };
+    var beat = a.ppq * 4 / s.den, per = s.num;
+    if (s.den === 8 && s.num % 3 === 0 && s.num > 3) { beat *= 3; per = s.num / 3; }
+    return { beat: beat, per: per };
+  }
+  function getBeats() {
+    if (state.beats) return state.beats;
+    var a = state.analysis, out = [];
+    a.measures.forEach(function (m) {
+      var bi = beatInfo(m);
+      if (m.implicit) { // 못갖춘마디: 끝에서부터 박을 센다
+        for (var t = m.end - bi.beat, k = 1; t >= m.start - 1; t -= bi.beat, k++) out.push({ tick: t, accent: false });
+      } else {
+        for (var i = 0; i < bi.per; i++) { var tk = m.start + i * bi.beat; if (tk < m.end) out.push({ tick: tk, accent: i === 0 }); }
+      }
+    });
+    out.sort(function (x, y) { return x.tick - y.tick; });
+    out.forEach(function (b) { b.sec = a.tickToSec(b.tick); });
+    return (state.beats = out);
+  }
+
+  // 메트로놈: 재생 위치(악보 초)를 보며 0.15초 앞까지 딸깍 소리를 예약한다
+  var metroLast = -1, metroTimer = 0;
+  function metroTick() {
+    if (!prefs.metro || player.paused || state.counting || !state.analysis) return;
+    var ctx = getToneCtx(); if (!ctx) return;
+    var now = scoreSec(), rate = player.playbackRate || 1, horizon = now + 0.15 * rate;
+    if (metroLast < 0 || now < metroLast - 0.25 || now > metroLast + 1.5) metroLast = now - 0.001; // 처음·이동 뒤
+    var beats = getBeats(), lo = 0, hi = beats.length;
+    while (lo < hi) { var mid = (lo + hi) >> 1; if (beats[mid].sec <= metroLast) lo = mid + 1; else hi = mid; }
+    for (var i = lo; i < beats.length && beats[i].sec <= horizon; i++) {
+      var dt = (beats[i].sec - now) / rate;
+      if (dt > -0.02) click(ctx.currentTime + Math.max(0, dt) + 0.01, beats[i].accent);
+      metroLast = beats[i].sec;
+    }
+  }
+  function startMetroTimer() { clearInterval(metroTimer); metroLast = -1; if (prefs.metro) metroTimer = setInterval(metroTick, 30); }
+  function updateMetroBtn() { var b = $('metroBtn'); b.textContent = prefs.metro ? '켜짐' : '꺼짐'; b.classList.toggle('on', prefs.metro); }
+  $('metroBtn').onclick = function () {
+    prefs.metro = !prefs.metro; savePrefs(); updateMetroBtn(); getToneCtx();
+    if (!player.paused) startMetroTimer(); else clearInterval(metroTimer);
+  };
+  $('metroVol').value = Math.round(prefs.metroVol * 100);
+  $('metroVol').oninput = function () { prefs.metroVol = this.value / 100; savePrefs(); };
+  $('countInSel').value = String(prefs.countIn);
+  $('countInSel').onchange = function () { prefs.countIn = +this.value; savePrefs(); };
+  updateMetroBtn();
+
+  // 카운트인: 지금 위치 마디의 박자로 1~2마디를 세고 나서 재생
+  function cancelCountIn() {
+    var c = state.counting;
+    if (!c) return;
+    state.counting = null;
+    c.timers.forEach(clearTimeout);
+    $('countOverlay').classList.add('hidden');
+  }
+  function countInThen(done) {
+    cancelCountIn();
+    var bars = prefs.countIn, a = state.analysis;
+    var ctx = bars > 0 && a ? getToneCtx() : null;
+    if (!ctx) { done(); return; }
+    var tick = Math.max(0, currentTick()), m = a.measures[measureAt(tick)], bi = beatInfo(m);
+    var rate = player.playbackRate || 1;
+    var beatSec = (a.tickToSec(tick + bi.beat) - a.tickToSec(tick)) / rate;
+    if (!(beatSec > 0.1)) beatSec = 0.5;
+    var n = bi.per * bars, t0 = ctx.currentTime + 0.12, c = { timers: [] };
+    state.counting = c;
+    var ov = $('countOverlay');
+    for (var i = 0; i < n; i++) {
+      click(t0 + i * beatSec, i % bi.per === 0, Math.max(0.35, prefs.metroVol));
+      (function (i) {
+        c.timers.push(setTimeout(function () { ov.textContent = String(n - i <= bi.per ? n - i : (i % bi.per) + 1); ov.classList.remove('hidden'); }, (0.12 + i * beatSec) * 1000));
+      })(i);
+    }
+    c.timers.push(setTimeout(function () {
+      if (state.counting !== c) return;
+      state.counting = null; ov.classList.add('hidden'); done();
+    }, (0.12 + n * beatSec) * 1000 - 40));
+  }
+
+  // 기준음·시작음
+  $('tuneSel').value = String(prefs.tuneA);
+  $('tuneSel').onchange = function () { prefs.tuneA = +this.value; savePrefs(); midiPlayer.setTuning(prefs.tuneA); toast('기준음 A = ' + prefs.tuneA + 'Hz'); };
+  $('refToneBtn').onclick = function () { var ctx = getToneCtx(); if (ctx) tone(69, ctx.currentTime + 0.03, 2, 0.3); };
+  function soundingTranspose() { return state.track && state.track.midi && state.song.mix ? state.song.mix.transpose || 0 : 0; }
+  $('startNoteBtn').onclick = function () {
+    var a = state.analysis, ctx = getToneCtx();
+    if (!a || !ctx) return;
+    var tick = currentTick(), parts = hlParts(), ev = a.events;
+    // 지금 울리는 음(쉬는 중이면 다음에 나올 음)
+    var target = null;
+    for (var i = 0; i < ev.length; i++) {
+      var e = ev[i];
+      if (!e.head || !parts.has(e.part)) continue;
+      if (e.endTick > tick + 1) { target = e.startTick <= tick ? e.startTick : e.startTick; break; }
+    }
+    if (target === null) { toast('뒤에 남은 음이 없습니다'); return; }
+    var keys = [];
+    ev.forEach(function (e) { if (e.head && parts.has(e.part) && e.startTick <= target && e.endTick > target) e.keys.forEach(function (k) { if (keys.indexOf(k) < 0) keys.push(k); }); });
+    keys.sort(function (x, y) { return x - y; });
+    var tr = soundingTranspose(), t = ctx.currentTime + 0.03;
+    if (keys.length > 1) { // 화음: 아래부터 하나씩, 그다음 함께
+      keys.forEach(function (k, j) { tone(k + tr, t + j * 0.35, 0.6, 0.22); });
+      t += keys.length * 0.35;
+      keys.forEach(function (k) { tone(k + tr, t, 1.6, 0.16); });
+    } else tone(keys[0] + tr, t, 1.6, 0.3);
+    var label = parts.size === 1 ? a.parts[Array.from(parts)[0]].name + ' ' : '';
+    toast(label + measureNo(measureAt(target)) + '마디 음: ' + keys.map(function (k) { return noteName(k + tr); }).join(' · '), 3500);
+  };
+
+  // ---------------- 내 음정(마이크) ----------------
+  var pitch = null; // { stream, ctx, an, buf, timer, stats }
+  function detectPitch(buf, sr) {
+    var n = buf.length, rms = 0, i;
+    for (i = 0; i < n; i++) rms += buf[i] * buf[i];
+    rms = Math.sqrt(rms / n);
+    if (rms < 0.012) return null;
+    // YIN
+    var W = Math.floor(n / 2), maxLag = Math.min(W, Math.floor(sr / 65)), minLag = Math.floor(sr / 1100);
+    var d = new Float32Array(maxLag + 1), cm = new Float32Array(maxLag + 1);
+    for (var tau = 1; tau <= maxLag; tau++) {
+      var s = 0;
+      for (i = 0; i < W; i++) { var df = buf[i] - buf[i + tau]; s += df * df; }
+      d[tau] = s;
+    }
+    cm[0] = 1;
+    var run = 0, best = -1;
+    for (tau = 1; tau <= maxLag; tau++) { run += d[tau]; cm[tau] = run ? d[tau] * tau / run : 1; }
+    for (tau = minLag; tau <= maxLag; tau++) {
+      if (cm[tau] < 0.15) { while (tau + 1 <= maxLag && cm[tau + 1] < cm[tau]) tau++; best = tau; break; }
+    }
+    if (best < 0) {
+      var mn = 1;
+      for (tau = minLag; tau <= maxLag; tau++) if (cm[tau] < mn) { mn = cm[tau]; best = tau; }
+      if (mn > 0.3) return null;
+    }
+    var x0 = best > 1 ? cm[best - 1] : cm[best], x2 = best < maxLag ? cm[best + 1] : cm[best];
+    var den = x0 + x2 - 2 * cm[best], shift = den ? (x0 - x2) / (2 * den) : 0;
+    var f = sr / (best + Math.max(-1, Math.min(1, shift)));
+    return f > 60 && f < 1200 ? f : null;
+  }
+  function freqToMidi(f) { return 69 + 12 * Math.log(f / prefs.tuneA) / Math.LN2; }
+  function pitchTargets() {
+    // 지금 고른 파트에서 울려야 할 음(조옮김 반영)
+    // 화면 그리기(하이라이트)와 상관없이 재생 위치로 직접 찾는다
+    var a = state.analysis, ev = a.events, tick = currentTick(), part = +state.song.hlPart, out = [];
+    var lo = 0, hi = ev.length - 1, last = -1;
+    while (lo <= hi) { var mid = (lo + hi) >> 1; if (ev[mid].startTick <= tick) { last = mid; lo = mid + 1; } else hi = mid - 1; }
+    for (var j = last; j >= 0 && ev[j].startTick > tick - state.maxDurTick - 1; j--) {
+      if (ev[j].part === part && ev[j].endTick > tick) out.push({ i: j, e: ev[j] });
+    }
+    return out;
+  }
+  function pitchFrame() {
+    if (!pitch) return;
+    pitch.an.getFloatTimeDomainData(pitch.buf);
+    var f = detectPitch(pitch.buf, pitch.ctx.sampleRate);
+    var meter = $('pitchMeter'), needle = $('pmNeedle');
+    meter.style.top = (wrap.getBoundingClientRect().top + 6) + 'px';
+    var tr = soundingTranspose(), targets = player.paused ? [] : pitchTargets();
+    var tgtText = player.paused ? '조율 모드(재생하면 악보와 비교)' : (targets.length ? '' : '쉼표');
+    meter.classList.remove('good', 'near', 'off');
+    if (f === null) {
+      $('pmMine').textContent = '내 음 —';
+      needle.style.display = 'none';
+      if (targets.length) tgtText = '목표 ' + noteName(targets[0].e.keys[0] + tr);
+      $('pmTarget').textContent = tgtText;
+      return;
+    }
+    var m = freqToMidi(f), cents, cls;
+    if (targets.length) {
+      // 화음이면 가장 가까운 음, 옥타브 차이는 같은 음으로 본다
+      var best = null;
+      targets.forEach(function (t) {
+        t.e.keys.forEach(function (k) {
+          var diff = m - (k + tr);
+          var fold = diff - 12 * Math.round(diff / 12);
+          if (!best || Math.abs(fold) < Math.abs(best.fold)) best = { fold: fold, key: k + tr, t: t };
+        });
+      });
+      cents = Math.round(best.fold * 100);
+      tgtText = '목표 ' + noteName(best.key);
+      // 점수: 음 시작 0.15초는 빼고 모은다(따라 들어가는 시간)
+      var a = state.analysis, since = scoreSec() - a.tickToSec(best.t.e.startTick);
+      if (since > 0.15) {
+        var st = pitch.stats[best.t.i] || (pitch.stats[best.t.i] = { n: 0, sum: 0 });
+        st.n++; st.sum += Math.abs(cents);
+      }
+    } else {
+      cents = Math.round((m - Math.round(m)) * 100); // 가장 가까운 반음과 비교(조율)
+    }
+    cls = Math.abs(cents) <= 20 ? 'good' : Math.abs(cents) <= 45 ? 'near' : 'off';
+    meter.classList.add(cls);
+    $('pmTarget').textContent = tgtText;
+    $('pmMine').textContent = '내 음 ' + noteName(m) + ' ' + (cents > 0 ? '+' : '') + cents + '¢';
+    needle.style.display = 'block';
+    needle.style.left = (50 + Math.max(-50, Math.min(50, cents)) ) + '%';
+  }
+  function clearPitchMarks() {
+    Array.prototype.forEach.call($('score').querySelectorAll('.pitch-ok, .pitch-near, .pitch-off'), function (g) { g.classList.remove('pitch-ok', 'pitch-near', 'pitch-off'); });
+  }
+  function startPitch() {
+    if (selectedPartOrWarn() === null) return;
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { toast('이 기기·브라우저는 마이크를 쓸 수 없습니다', 4000); return; }
+    var Ctx = window.AudioContext || window.webkitAudioContext;
+    navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } }).then(function (stream) {
+      var ctx = new Ctx(), src = ctx.createMediaStreamSource(stream), an = ctx.createAnalyser();
+      an.fftSize = 2048;
+      src.connect(an);
+      pitch = { stream: stream, ctx: ctx, an: an, buf: new Float32Array(an.fftSize), stats: {}, timer: setInterval(pitchFrame, 50) };
+      $('pitchBtn').classList.add('on');
+      $('pitchMeter').classList.remove('hidden');
+      toast('부르면 음 높이가 표시됩니다. 재생하면 내 파트 음과 비교합니다(이어폰 권장)', 4000);
+    }).catch(function (e) {
+      toast(e && e.name === 'NotAllowedError' ? '마이크 사용을 허용해야 음정을 볼 수 있습니다' : '마이크를 열지 못했습니다: ' + (e && e.message), 4500);
+    });
+  }
+  function stopPitch() {
+    if (!pitch) return;
+    clearInterval(pitch.timer);
+    pitch.stream.getTracks().forEach(function (t) { t.stop(); });
+    try { pitch.ctx.close(); } catch (e) { /* 무시 */ }
+    pitch = null;
+    $('pitchBtn').classList.remove('on');
+    $('pitchMeter').classList.add('hidden');
+    clearPitchMarks();
+  }
+  $('pitchBtn').onclick = function () { if (pitch) stopPitch(); else startPitch(); };
+  // 재생을 멈추면 이번에 부른 음표를 색으로 보여 준다(초록 맞음, 주황 조금 벗어남, 빨강 많이 벗어남)
+  function showPitchResult() {
+    if (!pitch) return;
+    var stats = pitch.stats, keys = Object.keys(stats), ok = 0, total = 0;
+    pitch.stats = {};
+    keys.forEach(function (k) {
+      var s = stats[k];
+      if (s.n < 3) return;
+      var avg = s.sum / s.n, cls = avg <= 20 ? 'pitch-ok' : avg <= 45 ? 'pitch-near' : 'pitch-off';
+      total++; if (cls === 'pitch-ok') ok++;
+      (state.eventEls[+k] || []).forEach(function (g) { g.classList.add(cls); });
+    });
+    if (total) toast('음정: 음표 ' + total + '개 중 ' + ok + '개 정확(' + Math.round(ok / total * 100) + '%). 초록 맞음 · 주황 조금 · 빨강 많이 벗어남', 5000);
+  }
+  function onPracticePlay() {
+    startMetroTimer();
+    clearPitchMarks();
+    if (pitch) pitch.stats = {};
+  }
+  function onPracticePause() {
+    clearInterval(metroTimer);
+    showPitchResult();
+  }
+
+  // ---------------- 마디 이동·책갈피 ----------------
+  function measureIndexFromNo(no) {
+    var a = state.analysis, mi = a.pickup > 0 ? no : no - 1;
+    return Math.max(0, Math.min(a.measures.length - 1, mi));
+  }
+  function goToMeasure(mi) {
+    var a = state.analysis;
+    if (state.recPlay) stopRecPlayback();
+    player.currentTime = Math.max(0, a.tickToSec(a.measures[mi].start) + trackOffset() + 0.005);
+    state.userScrollUntil = 0; state.followMeasure = -1;
+    var info = state.measurePos && state.measurePos[mi];
+    if (info) {
+      if (state.layout === 'page') goPage(info.page);
+      else updateHighlight();
+    }
+    updateHighlight(); updateTimeUi();
+  }
+  function renderBookmarks() {
+    var ul = $('bookmarkList'), list = (state.song.bookmarks || []).slice().sort(function (x, y) { return x.m - y.m; });
+    ul.innerHTML = '';
+    var a = state.analysis;
+    $('measureNow').textContent = measureNo(measureAt(Math.max(0, currentTick()))) + '마디';
+    $('measureRange').textContent = '(' + measureNo(0) + '~' + measureNo(a.measures.length - 1) + ')';
+    if (!list.length) { ul.innerHTML = '<li class="empty">책갈피가 없습니다. 자주 연습하는 곳(예: B, 후렴)에 붙여 두세요.</li>'; return; }
+    list.forEach(function (b, idx) {
+      var li = document.createElement('li');
+      var nm = document.createElement('span'); nm.className = 'nm'; nm.textContent = b.name + ' · ' + measureNo(b.m) + '마디';
+      var acts = document.createElement('span'); acts.className = 'acts';
+      function btn(label, fn) { var x = document.createElement('button'); x.className = 'small'; x.textContent = label; x.onclick = fn; acts.appendChild(x); }
+      btn('이동', function () { goToMeasure(b.m); $('measurePanel').classList.add('hidden'); });
+      btn('여기부터 반복', function () {
+        var next = list[idx + 1], mb = next ? Math.max(b.m, next.m - 1) : a.measures.length - 1;
+        state.loop = { ma: b.m, mb: mb, a: a.tickToSec(a.measures[b.m].start), b: a.tickToSec(a.measures[mb].end) };
+        state.loopStep = 0; updateLoopBtn(); goToMeasure(b.m);
+        $('measurePanel').classList.add('hidden');
+        toast(measureNo(b.m) + '~' + measureNo(mb) + '마디를 반복합니다');
+      });
+      btn('삭제', function () {
+        state.song.bookmarks = state.song.bookmarks.filter(function (x) { return x !== b; });
+        saveSong(); renderBookmarks();
+      });
+      li.appendChild(nm); li.appendChild(acts);
+      ul.appendChild(li);
+    });
+  }
+  $('measureBtn').onclick = function () {
+    $('measureInput').value = measureNo(measureAt(Math.max(0, currentTick())));
+    renderBookmarks();
+    $('measurePanel').classList.remove('hidden');
+  };
+  $('measureGo').onclick = function () {
+    var no = parseInt($('measureInput').value, 10);
+    if (!isFinite(no)) { toast('마디 번호를 넣으세요'); return; }
+    $('measureInput').blur();
+    goToMeasure(measureIndexFromNo(no));
+    $('measurePanel').classList.add('hidden');
+  };
+  $('measureInput').addEventListener('keydown', function (e) { if (e.key === 'Enter') $('measureGo').click(); });
+  $('bookmarkAdd').onclick = function () {
+    var mi = measureAt(Math.max(0, currentTick()));
+    var name = window.prompt(measureNo(mi) + '마디에 붙일 이름(예: B, 후렴, 2절)', String.fromCharCode(65 + Math.min(25, (state.song.bookmarks || []).length)));
+    if (name === null) return;
+    (state.song.bookmarks = state.song.bookmarks || []).push({ m: mi, name: name.trim() || (measureNo(mi) + '마디') });
+    saveSong(); renderBookmarks();
+  };
+  $('measureClose').onclick = function () { $('measurePanel').classList.add('hidden'); };
+  $('measurePanel').onclick = function (e) { if (e.target === this) this.classList.add('hidden'); };
+
+  // ---------------- 악보 메모·표시 ----------------
+  // song.memos = [{ part, measure, pos, text }] 음표 위치(파트·마디·마디 안 위치)에 붙인다
+  var MEMO_QUICK = ['V', '숨', '>', 'p', 'mp', 'mf', 'f', 'cresc.', 'dim.', 'rit.', '조용히', '!'];
+  var memoTarget = null;
+  function setMemoMode(on) {
+    state.memoMode = on;
+    $('memoBanner').classList.toggle('hidden', !on);
+    if (on) { pause(); if (state.loopStep) clearLoop(); toast('메모를 붙일 음표를 누르세요', 2500); }
+  }
+  function memoOf(ev) {
+    return (state.song.memos || []).filter(function (m) { return m.part === ev.part && m.measure === ev.measure && m.pos === ev.pos; })[0];
+  }
+  function openMemo(idx) {
+    var ev = state.analysis.events[idx];
+    memoTarget = ev;
+    var cur = memoOf(ev);
+    $('memoTitle').textContent = state.analysis.parts[ev.part].name + ' ' + measureNo(ev.measure) + '마디 메모';
+    $('memoText').value = cur ? cur.text : '';
+    $('memoDelete').classList.toggle('hidden', !cur);
+    var q = $('memoQuick');
+    q.innerHTML = '';
+    MEMO_QUICK.forEach(function (s) {
+      var b = document.createElement('button'); b.className = 'small'; b.textContent = s;
+      b.onclick = function () { var t = $('memoText'); t.value = t.value ? t.value + ' ' + s : s; };
+      q.appendChild(b);
+    });
+    $('memoDialog').classList.remove('hidden');
+  }
+  function saveMemo(text) {
+    var ev = memoTarget; if (!ev) return;
+    var list = (state.song.memos || []).filter(function (m) { return !(m.part === ev.part && m.measure === ev.measure && m.pos === ev.pos); });
+    if (text) list.push({ part: ev.part, measure: ev.measure, pos: ev.pos, text: text });
+    state.song.memos = list;
+    saveSong(); drawMemos();
+    $('memoDialog').classList.add('hidden');
+    memoTarget = null;
+  }
+  $('memoSave').onclick = function () { saveMemo($('memoText').value.trim()); };
+  $('memoText').addEventListener('keydown', function (e) { if (e.key === 'Enter') $('memoSave').click(); });
+  $('memoDelete').onclick = function () { saveMemo(''); };
+  $('memoCancel').onclick = function () { $('memoDialog').classList.add('hidden'); memoTarget = null; };
+  $('memoDialog').onclick = function (e) { if (e.target === this) { this.classList.add('hidden'); memoTarget = null; } };
+  $('memoBtn').onclick = function () { $('panel').classList.add('hidden'); setMemoMode(true); };
+  $('memoDoneBtn').onclick = function () { setMemoMode(false); };
+  $('memoClearBtn').onclick = function () {
+    var n = (state.song.memos || []).length;
+    if (!n) { toast('지울 메모가 없습니다'); return; }
+    if (!confirm('이 곡의 메모 ' + n + '개를 모두 지울까요?')) return;
+    state.song.memos = []; saveSong(); drawMemos(); toast('메모를 지웠습니다');
+  };
+  // 음표 위에 파란 글씨로 그린다(같은 음표 요소가 있는 페이지 SVG 안에)
+  function drawMemos() {
+    var score = $('score');
+    Array.prototype.forEach.call(score.querySelectorAll('.memo-mark'), function (n) { n.remove(); });
+    var memos = (state.song && state.song.memos) || [];
+    if (!memos.length || !state.analysis) return;
+    var ev = state.analysis.events, NS = 'http://www.w3.org/2000/svg';
+    memos.forEach(function (mm) {
+      var idx = -1;
+      for (var i = 0; i < ev.length; i++) { if (ev[i].part === mm.part && ev[i].measure === mm.measure && ev[i].pos === mm.pos) { idx = i; break; } }
+      var g = idx >= 0 ? (state.eventEls[idx] || [])[0] : null;
+      if (!g) return; // 숨긴 파트 등
+      var svg = g.ownerSVGElement; if (!svg) return;
+      var bb; try { bb = g.getBBox(); } catch (e) { return; }
+      // 악보 확대와 상관없이 화면에서 13px 정도로 보이게
+      var vb = svg.viewBox && svg.viewBox.baseVal, sw = svg.getBoundingClientRect().width;
+      var scale = vb && vb.width && sw ? sw / vb.width : 1;
+      var t = document.createElementNS(NS, 'text');
+      t.setAttribute('class', 'memo-mark');
+      t.setAttribute('x', bb.x);
+      t.setAttribute('y', bb.y - 3 / scale);
+      t.setAttribute('font-size', String(13 / scale));
+      t.setAttribute('style', 'stroke-width:' + (3 / scale) + 'px');
+      t.textContent = mm.text;
+      svg.appendChild(t);
+    });
+  }
+
+  // ---------------- 페달 ----------------
+  $('pedalSel').value = prefs.pedal;
+  $('pedalSel').onchange = function () { prefs.pedal = this.value; savePrefs(); };
+
+  function resetPracticeForSong() {
+    state.beats = null;
+    cancelCountIn();
+    if (state.memoMode) { state.memoMode = false; $('memoBanner').classList.add('hidden'); }
+    if (pitch) pitch.stats = {};
+  }
+
   // ---------------- 튜토리얼 ----------------
   var SAMPLE_ID = 'sample-twinkle';
   function ensureSample() {
@@ -1594,8 +2080,9 @@
     });
   }
   function closeAllPanels() {
-    ['panel', 'mixPanel', 'lyricDialog'].forEach(function (id) { $(id).classList.add('hidden'); });
+    ['panel', 'mixPanel', 'lyricDialog', 'measurePanel', 'memoDialog', 'recPanel'].forEach(function (id) { $(id).classList.add('hidden'); });
     if (state.editLyrics) setEditLyrics(false);
+    if (state.memoMode) setMemoMode(false);
   }
   function inSong() { return !$('songView').classList.contains('hidden'); }
   function openSample() {
@@ -1623,17 +2110,23 @@
         before: openSample },
       { target: '#loopBtn', title: '구간 반복', text: '어려운 부분만 반복합니다. 누른 뒤 <b>시작 마디의 음표</b> → <b>끝 마디의 음표</b>를 차례로 누르면, 그 구간이 빨간 바탕으로 칠해지고 계속 반복됩니다. 다시 누르면 꺼집니다.',
         before: openSample },
-      { target: '#mixBtn', title: '믹서', text: 'MIDI 소리일 때 파트별 볼륨을 조절합니다. <b>내 파트 크게</b>, <b>내 파트 빼고</b>(나머지 파트만 반주처럼), 조옮김을 할 수 있습니다.',
+      { v: 6, target: '#mixBtn', title: '믹서 · 박자 · 음 잡기', text: 'MIDI 소리일 때 파트별 볼륨을 조절합니다. <b>내 파트 크게</b>, <b>내 파트 빼고</b>(나머지 파트만 반주처럼), 조옮김을 할 수 있습니다.<br>아래쪽에 <b>메트로놈</b>(mp3·MIDI 모두), 재생 전에 1~2마디 세어 주는 <b>카운트인</b>, <b>기준음</b>(A=440~443Hz)과 A음 듣기가 있습니다.',
         before: openSample },
       { target: '#speedSel', title: '속도', text: '0.5배~1.1배로 느리게·빠르게 들을 수 있습니다. 음 높이는 그대로입니다.',
-        before: openSample },
+        before: function () { return openSample().then(function () { showToolBtn('speedSel'); }); } },
       { v: 2, target: '#recBtn', title: '반주 틀고 녹음', text: '누르면 지금 위치부터 반주를 틀면서 <b>내 목소리를 녹음</b>합니다(처음 한 번 마이크 허용). 다시 누르거나 일시정지하면 저장됩니다. 구간 반복이 켜져 있으면 그 구간만 녹음합니다.<br><b>이어폰</b>을 끼면 반주가 녹음에 섞이지 않습니다.',
-        before: openSample },
+        before: function () { return openSample().then(function () { showToolBtn('recBtn'); }); } },
       { v: 2, target: '#recListBtn', title: '내 녹음 듣기', text: '녹음 목록입니다. <b>반주와 같이</b> 또는 <b>내 목소리만</b> 들을 수 있고, 악보 빨간 표시도 따라갑니다. 목소리가 반주보다 늦게 들리면 <b>녹음 박자 보정</b>으로 맞추세요. 카카오톡 등으로 보낼 수도 있습니다.',
-        before: openSample },
+        before: function () { return openSample().then(function () { showToolBtn('recListBtn'); }); } },
+      { v: 6, target: '#pitchBtn', title: '내 음정 보기', text: '누르고 마이크를 허용하면 위쪽에 <b>내가 부르는 음 높이</b>가 나옵니다. 재생하면 내 파트 음과 비교해 가운데(초록)면 맞고, 오른쪽이면 높고, 왼쪽이면 낮습니다.<br>재생을 멈추면 방금 부른 음표가 <b>초록(맞음)·주황(조금)·빨강(많이 벗어남)</b>으로 칠해지고 정확도가 나옵니다. 반주가 마이크에 들어가지 않게 <b>이어폰</b>을 끼세요. 아래 버튼 줄은 좌우로 밀면 더 있습니다.',
+        before: function () { return openSample().then(function () { showToolBtn('pitchBtn'); }); } },
+      { v: 6, target: '#startNoteBtn', title: '시작음 듣기', text: '지금 위치에서 <b>내 파트가 부를 음</b>을 들려줍니다(쉬는 중이면 다음에 나올 음). "전체"를 골랐으면 모든 파트 음을 아래부터 하나씩, 그다음 화음으로 들려줍니다.',
+        before: function () { return openSample().then(function () { showToolBtn('startNoteBtn'); }); } },
+      { v: 6, target: '#measureBtn', title: '마디 이동 · 책갈피', text: '<b>마디 번호</b>를 넣어 바로 갑니다(지휘자가 "32마디부터"라고 할 때). 자주 연습하는 곳에 <b>책갈피</b>(예: B, 후렴)를 붙여 두고, "여기부터 반복"으로 다음 책갈피 앞까지 반복할 수 있습니다.',
+        before: function () { return openSample().then(function () { showToolBtn('measureBtn'); }); } },
       { v: 3, target: '#focusBtn', title: '악보 크게 보기', text: '<b>악보의 빈 곳(음표가 아닌 곳)을 누르면</b> 위·아래 버튼이 숨고 악보가 화면 가득 보입니다. 한 번 더 누르면 버튼이 다시 나옵니다. 이 버튼으로도 숨길 수 있습니다.<br>숨긴 동안에는 오른쪽 아래 작은 조작부(▶, ↺5)로 재생합니다. 화면이 작아 악보 한 단이 다 안 들어가면 크기를 자동으로 줄여 아래 줄이 잘리지 않게 합니다.',
         before: openSample },
-      { v: 5, target: '#menuBtn', title: '설정', text: '확대·축소, 가사 표시, <b>가사 고치기</b>, 음원 추가, <b>곡 묶음 내보내기</b>(단원에게 공유), 사용법 다시 보기가 여기 있습니다.<br>넘김 방식·가사·확대 같은 설정은 <b>설정 창을 닫을 때 한 번에</b> 악보에 적용됩니다(여러 개를 바꿔도 한 번만 다시 그려 빠릅니다).',
+      { v: 6, target: '#menuBtn', title: '설정', text: '확대·축소, 가사 표시, <b>가사 고치기</b>, <b>악보에 메모</b>(음표를 눌러 "숨", "p", "크게" 같은 표시를 파란 글씨로), <b>페달·키보드</b>(블루투스 악보 넘김 페달로 페이지 넘기기 또는 재생/정지), 음원 추가, <b>곡 묶음 내보내기</b>(메모·책갈피도 함께), 사용법 다시 보기가 여기 있습니다.<br>설정은 <b>설정 창을 닫을 때 한 번에</b> 악보에 적용됩니다.',
         before: openSample },
       { target: '#backBtn', title: '다 됐습니다', text: '이제 내 곡을 추가해 연습해 보세요. 왼쪽 위 화살표로 곡 목록에 돌아갑니다. 예제 곡은 목록에 남아 있으니 지워도 되고, 사용법은 목록 화면의 <b>?</b> 버튼으로 다시 볼 수 있습니다.',
         before: openSample }
@@ -1643,7 +2136,14 @@
   // 이전 판을 본 사람에게는 앱을 열 때 새 단계만 "새로 추가된 기능"으로 보여 준다.
   //  1: 기본(곡 추가~설정)  2: 녹음, 내 녹음  3: 악보 빈 곳 눌러 버튼 숨기기(악보 크게 보기), 화면에 맞춤
   //  4: 파트 버튼 한 줄 가로 스크롤  5: 설정은 창을 닫을 때 적용
-  var TUTORIAL_VERSION = 5;
+  //  6: 음정 표시, 시작음, 마디 이동·책갈피, 메트로놈·카운트인·기준음, 메모, 페달
+  var TUTORIAL_VERSION = 6;
+  // 아래 도구 줄은 좌우로 밀리므로, 짚을 버튼이 화면 안에 오게 한다
+  function showToolBtn(id) {
+    var b = $(id), row = b && b.parentNode;
+    if (!row) return;
+    row.scrollLeft = Math.max(0, b.offsetLeft - row.offsetLeft - (row.clientWidth - b.offsetWidth) / 2);
+  }
   function seenTutorialVersion() {
     try {
       var v = parseInt(localStorage.getItem('tutorialVersion'), 10);
@@ -1682,7 +2182,7 @@
   // 시험용: ?demo=1 이면 sample/ 폴더의 score.mid와 음원을 불러온다(PC 확인용)
   window.__app = { state: state, openSong: openSong, selectTrack: selectTrack, updateHighlight: updateHighlight,
     buildPack: buildPack, importPack: importPack, midiPlayer: midiPlayer, getPlayer: function () { return player; },
-    startTutorial: startTutorial };
+    startTutorial: startTutorial, detectPitch: detectPitch, getBeats: getBeats, openMemo: openMemo, drawMemos: drawMemos };
   if (/[?&]demo=1/.test(location.search)) {
     Promise.all([fetch('sample/score.mid').then(function (r) { return r.arrayBuffer(); }),
       fetch('sample/Tenor.mp3').then(function (r) { return r.blob(); })]).then(function (res) {
