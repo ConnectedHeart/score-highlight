@@ -1394,13 +1394,14 @@
     try { localStorage.setItem('view', state.view); } catch (e) { /* 무시 */ }
     renderScore(false);
   };
+  // 확대는 5% 단위(기본 45%로 돌아갈 수 있게)
   function setZoom(z) {
-    state.zoom = Math.max(0.3, Math.min(2, Math.round(z * 10) / 10));
+    state.zoom = Math.max(0.2, Math.min(2, Math.round(z * 20) / 20));
     try { localStorage.setItem('zoom', state.zoom); } catch (e) { /* 무시 */ }
-    renderScore(false);
+    renderScore(false, true).then(updateHighlight);
   }
-  $('zoomIn').onclick = function () { setZoom(state.zoom + 0.1); };
-  $('zoomOut').onclick = function () { setZoom(state.zoom - 0.1); };
+  $('zoomIn').onclick = function () { setZoom(state.zoom + 0.05); };
+  $('zoomOut').onclick = function () { setZoom(state.zoom - 0.05); };
   function setOffset(v) {
     if (!state.track) return;
     if (state.track.midi) { toast('MIDI 소리는 시작 위치를 맞출 필요가 없습니다'); $('offsetInput').value = '0.00'; return; }
