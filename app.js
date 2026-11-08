@@ -295,6 +295,9 @@
         }
         tightenRules(osmd.EngravingRules, paged);
         osmd.render();
+        state.lastRenderW = wrap.clientWidth;
+        // 그리는 동안 크기가 또 바뀌었으면 한 번 더
+        setTimeout(onWrapResize, 50);
         buildMap();
         drawLoopMarks();
         wrap.scrollLeft = 0; wrap.scrollTop = 0;
@@ -542,17 +545,21 @@
     if (p && p.catch) p.catch(function (e) { toast('재생하지 못했습니다: ' + e.message); });
   }
   function pause() { player.pause(); }
+  function setPlayIcon(playing) {
+    $('playBtn').textContent = playing ? '❚❚' : '▶';
+    $('miniPlay').textContent = playing ? '❚❚' : '▶';
+  }
   [audioEl, midiPlayer].forEach(function (pl) {
-    pl.addEventListener('play', function () { if (pl !== player) return; $('playBtn').textContent = '❚❚'; cancelAnimationFrame(raf); raf = requestAnimationFrame(loop); });
+    pl.addEventListener('play', function () { if (pl !== player) return; setPlayIcon(true); cancelAnimationFrame(raf); raf = requestAnimationFrame(loop); });
     pl.addEventListener('pause', function () {
       if (pl !== player) return;
-      $('playBtn').textContent = '▶'; cancelAnimationFrame(raf); updateHighlight(); updateTimeUi();
+      setPlayIcon(false); cancelAnimationFrame(raf); updateHighlight(); updateTimeUi();
       if (state.rec) stopRecording();
       if (state.recPlay) stopRecPlayback();
     });
     pl.addEventListener('ended', function () {
       if (pl !== player) return;
-      $('playBtn').textContent = '▶';
+      setPlayIcon(false);
       if (state.rec) stopRecording();
     });
     pl.addEventListener('loadedmetadata', function () { if (pl === player) updateTimeUi(); });
@@ -1343,15 +1350,40 @@
   };
   $('backBtn').onclick = showList;
 
-  // 화면 회전 등으로 폭이 바뀌면 다시 그린다
-  var lastW = window.innerWidth, lastH = window.innerHeight, rt = 0;
-  window.addEventListener('resize', function () {
-    var dw = Math.abs(window.innerWidth - lastW), dh = Math.abs(window.innerHeight - lastH);
-    if ((dw < 40 && (state.layout !== 'page' || dh < 60)) || !state.song || $('songView').classList.contains('hidden')) return;
-    lastW = window.innerWidth; lastH = window.innerHeight;
+  // 악보 영역 크기가 바뀌면(화면 회전, 버튼 숨김/보임, 늦게 적용된 글꼴로 버튼 줄 수가 바뀜, 주소창 접힘 등)
+  // 페이지를 화면에 맞게 다시 나눈다. 그리지 않으면 페이지가 화면보다 커져 맨 아래 줄(베이스)이 잘린다.
+  var rt = 0;
+  function sizeChanged() {
+    if (!state.song || !state.osmd || $('songView').classList.contains('hidden')) return false;
+    var w = wrap.clientWidth, h = wrap.clientHeight;
+    if (!w || !h) return false;
+    if (state.layout === 'page') return Math.abs(w - state.pageW) > 2 || Math.abs(h - state.pageH) > 2;
+    return Math.abs(w - (state.lastRenderW || 0)) > 30;
+  }
+  function onWrapResize() {
     clearTimeout(rt);
-    rt = setTimeout(function () { renderScore(false); }, 400);
-  });
+    rt = setTimeout(function () {
+      if (sizeChanged()) renderScore(false, true).then(function () { updateHighlight(); });
+    }, 250);
+  }
+  if (window.ResizeObserver) new ResizeObserver(onWrapResize).observe(wrap);
+  window.addEventListener('resize', onWrapResize);
+  // 글꼴이 늦게 적용돼 버튼 줄 높이가 바뀌는 경우, 앱으로 돌아온 경우에도 확인
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(onWrapResize);
+  document.addEventListener('visibilitychange', function () { if (!document.hidden) onWrapResize(); });
+
+  // ---------------- 악보 크게 보기(버튼 숨김) ----------------
+  function setFocus(on) {
+    document.body.classList.toggle('focus', on);
+    try { localStorage.setItem('focus', on ? '1' : ''); } catch (e) { /* 무시 */ }
+    if (state.loop || state.loopStep) updateLoopBtn();
+    onWrapResize(); // 악보 영역이 커지거나 작아졌으니 페이지를 다시 나눈다
+  }
+  $('focusBtn').onclick = function () { setFocus(true); };
+  $('miniShow').onclick = function () { setFocus(false); };
+  $('miniPlay').onclick = function () { $('playBtn').click(); };
+  $('miniBack').onclick = function () { $('back5').click(); };
+  try { if (localStorage.getItem('focus')) document.body.classList.add('focus'); } catch (e) { /* 무시 */ }
 
   // 아이폰: 파일 선택 창에서 .mid가 흐리게 막히지 않도록 형식 제한을 푼다
   var isIOS = /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
@@ -1418,9 +1450,11 @@
         before: openSample },
       { target: '#speedSel', title: '속도', text: '0.5배~1.1배로 느리게·빠르게 들을 수 있습니다. 음 높이는 그대로입니다.',
         before: openSample },
-      { target: '#recBtn', title: '반주 틀고 녹음', text: '누르면 지금 위치부터 반주를 틀면서 <b>내 목소리를 녹음</b>합니다(처음 한 번 마이크 허용). 다시 누르거나 일시정지하면 저장됩니다. 구간 반복이 켜져 있으면 그 구간만 녹음합니다.<br><b>이어폰</b>을 끼면 반주가 녹음에 섞이지 않습니다.',
+      { v: 2, target: '#recBtn', title: '반주 틀고 녹음', text: '누르면 지금 위치부터 반주를 틀면서 <b>내 목소리를 녹음</b>합니다(처음 한 번 마이크 허용). 다시 누르거나 일시정지하면 저장됩니다. 구간 반복이 켜져 있으면 그 구간만 녹음합니다.<br><b>이어폰</b>을 끼면 반주가 녹음에 섞이지 않습니다.',
         before: openSample },
-      { target: '#recListBtn', title: '내 녹음 듣기', text: '녹음 목록입니다. <b>반주와 같이</b> 또는 <b>내 목소리만</b> 들을 수 있고, 악보 빨간 표시도 따라갑니다. 목소리가 반주보다 늦게 들리면 <b>녹음 박자 보정</b>으로 맞추세요. 카카오톡 등으로 보낼 수도 있습니다.',
+      { v: 2, target: '#recListBtn', title: '내 녹음 듣기', text: '녹음 목록입니다. <b>반주와 같이</b> 또는 <b>내 목소리만</b> 들을 수 있고, 악보 빨간 표시도 따라갑니다. 목소리가 반주보다 늦게 들리면 <b>녹음 박자 보정</b>으로 맞추세요. 카카오톡 등으로 보낼 수도 있습니다.',
+        before: openSample },
+      { v: 2, target: '#focusBtn', title: '악보 크게 보기', text: '누르면 위·아래 버튼을 모두 숨기고 <b>악보를 화면 가득</b> 보여 줍니다. 오른쪽 아래 작은 조작부(▶, ↺5)로 재생하고, <b>버튼 보이기</b>를 누르면 다시 나타납니다.',
         before: openSample },
       { target: '#menuBtn', title: '설정', text: '확대·축소, 가사 표시, <b>가사 고치기</b>, 음원 추가, <b>곡 묶음 내보내기</b>(단원에게 공유), 사용법 다시 보기가 여기 있습니다.',
         before: openSample },
@@ -1428,17 +1462,43 @@
         before: openSample }
     ];
   }
+  // 튜토리얼 판(版). 기능을 추가하면 그 단계에 v: 새 번호를 붙이고 이 값을 올린다.
+  // 이전 판을 본 사람에게는 앱을 열 때 새 단계만 "새로 추가된 기능"으로 보여 준다.
+  //  1: 기본(곡 추가~설정)  2: 녹음, 내 녹음, 악보 크게 보기
+  var TUTORIAL_VERSION = 2;
+  function seenTutorialVersion() {
+    try {
+      var v = parseInt(localStorage.getItem('tutorialVersion'), 10);
+      if (isFinite(v)) return v;
+      return localStorage.getItem('tutorialDone') ? 1 : 0;
+    } catch (e) { return TUTORIAL_VERSION; }
+  }
+  function markTutorialSeen() {
+    try { localStorage.setItem('tutorialVersion', String(TUTORIAL_VERSION)); localStorage.setItem('tutorialDone', '1'); } catch (e) { /* 무시 */ }
+  }
   function startTutorial() {
-    try { localStorage.setItem('tutorialDone', '1'); } catch (e) { /* 무시 */ }
+    markTutorialSeen();
+    setFocus(false); // 튜토리얼은 버튼을 짚어야 하므로 버튼을 보인다
     Tutorial.start(tutorialSteps(), function () { pause(); });
+  }
+  function startWhatsNew(since) {
+    var fresh = tutorialSteps().filter(function (s) { return (s.v || 1) > since; });
+    markTutorialSeen();
+    if (!fresh.length) return;
+    setFocus(false);
+    var steps = [{ title: '새로 추가된 기능이 있어요', text: '앱이 업데이트됐습니다. 새 기능 ' + fresh.length + '가지를 예제 곡 화면에서 짧게 보여 드릴게요.',
+      before: function () { closeAllPanels(); }, nextLabel: '보기' }]
+      .concat(fresh)
+      .concat([{ target: '#backBtn', title: '끝', text: '전체 사용법은 목록 화면의 <b>?</b> 버튼이나 ⋯ 설정의 "사용법 다시 보기"에서 언제든 볼 수 있습니다.', before: openSample }]);
+    Tutorial.start(steps, function () { pause(); });
   }
   $('helpBtn').onclick = startTutorial;
   $('sampleBtn').onclick = startTutorial;
   $('tutorialBtn').onclick = function () { $('panel').classList.add('hidden'); startTutorial(); };
   function maybeFirstRunTutorial() {
-    var done = false;
-    try { done = !!localStorage.getItem('tutorialDone'); } catch (e) { done = true; }
-    if (!done) setTimeout(startTutorial, 600);
+    var seen = seenTutorialVersion();
+    if (seen <= 0) setTimeout(startTutorial, 600);
+    else if (seen < TUTORIAL_VERSION) setTimeout(function () { startWhatsNew(seen); }, 600);
   }
 
   // 시험용: ?demo=1 이면 sample/ 폴더의 score.mid와 음원을 불러온다(PC 확인용)

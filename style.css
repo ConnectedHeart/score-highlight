@@ -90,6 +90,17 @@ button.wide { width: 100%; padding: 14px; font-size: 16px; }
 #score .loop-mark.range.first { stroke: #e0262b; stroke-width: 2; stroke-dasharray: 0; }
 #score .loop-mark.range.last { stroke: #e0262b; stroke-width: 2; }
 .lyric-text { width: 100%; margin: 8px 0; padding: 10px; border: 1px solid var(--line); border-radius: 10px; font: inherit; font-size: 15px; line-height: 1.6; resize: vertical; }
+/* 악보 크게 보기: 제목줄·음원/파트 버튼·아래 조작부를 숨기고 작은 조작부만 띄운다 */
+.focus-btn { flex: none; background: rgba(255,255,255,0.14); color: #fff; border: 1px solid rgba(255,255,255,0.4); border-radius: 999px; padding: 4px 10px; font-size: 13px; white-space: nowrap; }
+.mini-ctrl { display: none; position: fixed; right: 10px; bottom: calc(10px + var(--safe-bottom)); z-index: 12; gap: 6px; align-items: center;
+  background: rgba(31, 42, 68, 0.82); padding: 6px; border-radius: 999px; box-shadow: 0 2px 10px rgba(0,0,0,0.25); }
+.mini-ctrl button { border: none; background: transparent; color: #fff; font-size: 14px; padding: 6px 10px; border-radius: 999px; }
+.mini-ctrl .mini-play { background: var(--accent); width: 44px; height: 44px; font-size: 18px; padding: 0; }
+body.focus #songView > .bar, body.focus #trackBar, body.focus #partBar, body.focus .transport { display: none !important; }
+body.focus #songView { padding-top: var(--safe-top); }
+body.focus .mini-ctrl { display: flex; }
+body.focus .page-info { bottom: calc(70px + var(--safe-bottom)); }
+
 /* 녹음 */
 .rec-btn.on { background: #c62828; color: #fff; border-color: #c62828; animation: recblink 1.2s infinite; }
 @keyframes recblink { 50% { opacity: 0.65; } }

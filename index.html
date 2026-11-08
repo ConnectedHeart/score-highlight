@@ -34,6 +34,7 @@
     <header class="bar">
       <button id="backBtn" class="icon" aria-label="목록">‹</button>
       <h1 id="songTitle"></h1>
+      <button id="focusBtn" class="focus-btn" aria-label="악보 크게 보기">⤢ 악보 크게</button>
       <button id="menuBtn" class="icon" aria-label="설정">⋯</button>
     </header>
 
@@ -55,6 +56,13 @@
       <div id="loading" class="loading hidden">악보 그리는 중…</div>
     </div>
     <div id="pageInfo" class="page-info hidden"></div>
+
+    <!-- 악보 크게 보기(버튼 숨김) 때만 보이는 작은 조작부 -->
+    <div id="miniCtrl" class="mini-ctrl">
+      <button id="miniBack" aria-label="5초 뒤로">↺5</button>
+      <button id="miniPlay" class="mini-play" aria-label="재생">▶</button>
+      <button id="miniShow" aria-label="버튼 보이기">버튼 보이기</button>
+    </div>
 
     <footer class="transport">
       <div class="seek-row">
