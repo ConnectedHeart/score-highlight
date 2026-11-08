@@ -1,6 +1,6 @@
 /* 오프라인용 서비스 워커: 앱 파일을 저장해 두고 인터넷 없이도 연다.
  * 앱 파일을 고치면 VERSION을 바꿔야 폰에 새 버전이 받아진다(scripts/build-web.js가 자동으로 바꿈). */
-var VERSION = 'v202611081425';
+var VERSION = 'v202611081439';
 var FILES = ['./', 'index.html', 'style.css', 'app.js', 'midi2xml.js', 'store.js', 'midisynth.js', 'pack.js', 'tutorial.js',
   'lib/opensheetmusicdisplay.min.js', 'manifest.webmanifest', 'icons/icon-180.png', 'icons/icon-192.png', 'icons/icon-512.png'];
 

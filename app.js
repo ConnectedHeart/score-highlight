@@ -433,6 +433,20 @@
       return els;
     });
     window.__scoreStats = { events: a.events.length, matched: a.events.length - miss, groups: lookup.size };
+
+    // 마디마다 몇 번째 페이지·어느 높이에 있는지(파트와 상관없이 재생 위치로 페이지를 넘기기 위해)
+    var pages = osmd.GraphicSheet.MusicPages || [];
+    state.measurePos = osmd.GraphicSheet.MeasureList.map(function (row) {
+      var info = null;
+      (row || []).forEach(function (gm) {
+        if (!gm || !gm.ParentMusicSystem || !gm.PositionAndShape) return;
+        var y = gm.PositionAndShape.AbsolutePosition.y;
+        if (!info) info = { page: Math.max(0, pages.indexOf(gm.ParentMusicSystem.Parent)), top: y, bottom: y + 4 };
+        info.top = Math.min(info.top, y); info.bottom = Math.max(info.bottom, y + 4);
+      });
+      return info;
+    });
+    state.followMeasure = -1;
     if (miss && state.view === 'all') console.warn('악보에서 찾지 못한 음표 조각', miss, '/', a.events.length);
   }
 
@@ -467,32 +481,35 @@
       if (!state.active.has(i)) { (state.eventEls[i] || []).forEach(function (g) { g.classList.add('hl'); }); changed = true; }
     });
     state.active = next;
-    if (changed && next.size) autoScroll(next);
+    followPosition(tick);
   }
 
-  function autoScroll(set) {
-    if (!$('autoScroll').checked || Date.now() < state.userScrollUntil) return;
+  // 지금 재생 중인 마디(모든 파트 기준)를 따라 페이지를 넘긴다. 선택 파트가 쉬는 중이어도 넘어간다.
+  function measureAt(tick) {
+    var ms = state.analysis.measures, lo = 0, hi = ms.length - 1, ans = 0;
+    while (lo <= hi) { var mid = (lo + hi) >> 1; if (ms[mid].start <= tick) { ans = mid; lo = mid + 1; } else hi = mid - 1; }
+    return ans;
+  }
+  function followPosition(tick) {
+    if (!state.measurePos) return;
+    var m = measureAt(Math.max(0, tick));
+    if (m === state.followMeasure) return;
+    if (!$('autoScroll').checked || Date.now() < state.userScrollUntil) return; // 손으로 넘겨 보는 중이면 기다린다
+    state.followMeasure = m;
+    var info = state.measurePos[m];
+    if (!info) return;
     if (state.layout === 'page') {
-      // 선택 파트의 현재 음표가 다른 페이지로 넘어갔을 때만 넘긴다
-      var target = Infinity;
-      set.forEach(function (i) { (state.eventEls[i] || []).forEach(function (g) { target = Math.min(target, pageOf(g)); }); });
-      if (target !== Infinity && target !== currentPage()) goPage(target);
+      if (info.page !== currentPage()) goPage(info.page);
       return;
     }
-    var top = Infinity, bottom = -Infinity;
-    set.forEach(function (i) {
-      (state.eventEls[i] || []).forEach(function (g) {
-        var r = g.getBoundingClientRect();
-        if (r.height === 0 && r.width === 0) return;
-        top = Math.min(top, r.top); bottom = Math.max(bottom, r.bottom);
-      });
-    });
-    if (top === Infinity) return;
-    var wr = wrap.getBoundingClientRect();
+    // 위아래 스크롤: 그 마디 줄이 화면 밖이면 위쪽 1/4 지점으로
+    var svg = $('score').querySelector('svg');
+    if (!svg) return;
+    var scale = 10 * state.zoom, sr = svg.getBoundingClientRect(), wr = wrap.getBoundingClientRect();
+    var top = sr.top + (info.top - 2) * scale, bottom = sr.top + (info.bottom + 2) * scale;
     var margin = Math.min(80, wrap.clientHeight * 0.15);
     if (top < wr.top + margin || bottom > wr.bottom - margin) {
-      var target = wrap.scrollTop + (top - wr.top) - wrap.clientHeight * 0.25;
-      wrap.scrollTo({ top: Math.max(0, target), behavior: 'smooth' });
+      wrap.scrollTo({ top: Math.max(0, wrap.scrollTop + (top - wr.top) - wrap.clientHeight * 0.25), behavior: 'smooth' });
     }
   }
   ['touchstart', 'wheel', 'mousedown'].forEach(function (evName) {
