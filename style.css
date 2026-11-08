@@ -38,10 +38,14 @@ button.wide { width: 100%; padding: 14px; font-size: 16px; }
 .song-list li span { color: var(--muted); font-size: 13px; }
 .empty { color: var(--muted); text-align: center; padding: 30px 0; }
 
-.track-bar { display: flex; gap: 8px; overflow-x: auto; padding: 8px 10px; background: var(--panel); border-bottom: 1px solid var(--line); }
+.track-bar::-webkit-scrollbar { display: none; }
+.track-bar { scrollbar-width: none; display: flex; gap: 8px; overflow-x: auto; padding: 8px 10px; background: var(--panel); border-bottom: 1px solid var(--line); }
 .chip { flex: none; display: flex; align-items: center; background: var(--chip); border: 1px solid transparent; border-radius: 999px; padding: 6px 14px; font-size: 14px; white-space: nowrap; }
 .chip.on { background: var(--chip-on); color: #fff; }
-.part-bar { flex-wrap: wrap; gap: 6px; padding: 6px 8px; }
+/* 파트 버튼: 한 줄, 좌우로 밀어서 고른다 */
+.part-bar { flex-wrap: nowrap; gap: 6px; padding: 6px 8px; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; -webkit-overflow-scrolling: touch; overscroll-behavior-x: contain; }
+.part-bar::-webkit-scrollbar { display: none; }
+.part-bar .chip { flex: none; }
 .part-bar .chip { padding: 5px 11px; font-size: 13px; }
 .part-bar .chip.on { background: var(--accent); }
 

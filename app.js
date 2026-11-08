@@ -196,13 +196,22 @@
     bar.innerHTML = '';
     var cur = state.song.hlPart || 'all';
     var items = [{ v: 'all', label: '전체' }].concat(state.analysis.parts.map(function (p, i) { return { v: String(i), label: p.name }; }));
+    var keepScroll = bar.scrollLeft, onChip = null;
     items.forEach(function (it) {
       var chip = document.createElement('button');
       chip.className = 'chip' + (cur === it.v ? ' on' : '');
       chip.textContent = it.label;
       chip.onclick = function () { selectPart(it.v); };
       bar.appendChild(chip);
+      if (cur === it.v) onChip = chip;
     });
+    // 한 줄 가로 스크롤: 위치를 유지하고, 고른 버튼이 화면 밖이면 보이게
+    bar.scrollLeft = keepScroll;
+    if (onChip) {
+      var l = onChip.offsetLeft - bar.offsetLeft, r = l + onChip.offsetWidth;
+      if (l < bar.scrollLeft + 8) bar.scrollLeft = Math.max(0, l - 24);
+      else if (r > bar.scrollLeft + bar.clientWidth - 8) bar.scrollLeft = r - bar.clientWidth + 24;
+    }
   }
 
   function selectPart(v) {
@@ -1479,7 +1488,7 @@
       { target: '#addSongBtn', title: '곡 추가', text: '여기서 <b>MIDI 파일 1개</b>와 <b>연습 음원(mp3)</b>을 한 번에 골라 곡을 추가합니다. 다른 사람이 보낸 <b>곡 묶음(.zip)</b>도 여기서 고르면 그대로 들어옵니다.<br>MIDI와 mp3는 카카오톡 "파일에 저장"이나 클라우드로 폰에 넣어 두세요.',
         before: function () { closeAllPanels(); if (inSong()) showList(); } },
       { title: '예제 곡을 열어 볼게요', text: '"반짝반짝 작은 별"을 4성부(소프라노·알토·테너·베이스)로 만든 예제 곡입니다. 다음을 누르면 열립니다.', nextLabel: '예제 곡 열기' },
-      { target: '#partBar', title: '내 파트 고르기', text: '빨갛게 표시할 파트를 고릅니다. <b>전체</b>를 고르면 모든 파트가 표시됩니다. 악보는 항상 전체가 보이고, 고른 파트만 빨갛게 바뀝니다.',
+      { v: 4, target: '#partBar', title: '내 파트 고르기', text: '빨갛게 표시할 파트를 고릅니다. 파트 버튼은 한 줄로 있어서 <b>좌우로 밀면</b> 다른 파트가 보입니다. <b>전체</b>를 고르면 모든 파트가 표시됩니다. 악보는 항상 전체가 보이고, 고른 파트만 빨갛게 바뀝니다.',
         before: openSample, wait: 200 },
       { target: '#trackBar', title: '들을 소리 고르기', text: '곡에 넣은 mp3 음원(♪)과 <b>🎹 MIDI 소리</b> 중에서 고릅니다. mp3가 없어도 MIDI 소리로 들을 수 있습니다. 예제 곡은 MIDI 소리만 있습니다.',
         before: openSample },
@@ -1508,7 +1517,8 @@
   // 튜토리얼 판(版). 기능을 추가하면 그 단계에 v: 새 번호를 붙이고 이 값을 올린다.
   // 이전 판을 본 사람에게는 앱을 열 때 새 단계만 "새로 추가된 기능"으로 보여 준다.
   //  1: 기본(곡 추가~설정)  2: 녹음, 내 녹음  3: 악보 빈 곳 눌러 버튼 숨기기(악보 크게 보기), 화면에 맞춤
-  var TUTORIAL_VERSION = 3;
+  //  4: 파트 버튼 한 줄 가로 스크롤
+  var TUTORIAL_VERSION = 4;
   function seenTutorialVersion() {
     try {
       var v = parseInt(localStorage.getItem('tutorialVersion'), 10);
