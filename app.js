@@ -190,6 +190,33 @@
     });
   }
 
+  // ---------------- 버튼 줄 끌어서 옮기기 ----------------
+  // 휴대폰은 손가락으로 끌면 원래 가로로 스크롤된다. 마우스(PC)로 끌어도 옮겨지게 하고,
+  // 끈 뒤에 손을 뗄 때 버튼이 눌리지 않게 막는다.
+  function enableDragScroll(el) {
+    var down = false, startX = 0, startLeft = 0, moved = false;
+    el.addEventListener('pointerdown', function (e) {
+      if (e.pointerType !== 'mouse' || e.button !== 0) return;
+      down = true; moved = false; startX = e.clientX; startLeft = el.scrollLeft;
+    });
+    window.addEventListener('pointermove', function (e) {
+      if (!down) return;
+      var dx = e.clientX - startX;
+      if (Math.abs(dx) > 5) moved = true;
+      if (moved) { el.scrollLeft = startLeft - dx; e.preventDefault(); }
+    });
+    window.addEventListener('pointerup', function () { down = false; });
+    // 손가락으로 끈 경우도 클릭을 막는다(브라우저가 대부분 막지만 일부 웹뷰 대비)
+    var tx = 0, tMoved = false;
+    el.addEventListener('touchstart', function (e) { tx = e.touches[0].clientX; tMoved = false; }, { passive: true });
+    el.addEventListener('touchmove', function (e) { if (Math.abs(e.touches[0].clientX - tx) > 8) tMoved = true; }, { passive: true });
+    el.addEventListener('click', function (e) {
+      if (moved || tMoved) { e.stopPropagation(); e.preventDefault(); moved = false; tMoved = false; }
+    }, true);
+  }
+  enableDragScroll($('partBar'));
+  enableDragScroll($('trackBar'));
+
   // ---------------- 하이라이트 파트 선택 ----------------
   function renderParts() {
     var bar = $('partBar');
@@ -1488,7 +1515,7 @@
       { target: '#addSongBtn', title: '곡 추가', text: '여기서 <b>MIDI 파일 1개</b>와 <b>연습 음원(mp3)</b>을 한 번에 골라 곡을 추가합니다. 다른 사람이 보낸 <b>곡 묶음(.zip)</b>도 여기서 고르면 그대로 들어옵니다.<br>MIDI와 mp3는 카카오톡 "파일에 저장"이나 클라우드로 폰에 넣어 두세요.',
         before: function () { closeAllPanels(); if (inSong()) showList(); } },
       { title: '예제 곡을 열어 볼게요', text: '"반짝반짝 작은 별"을 4성부(소프라노·알토·테너·베이스)로 만든 예제 곡입니다. 다음을 누르면 열립니다.', nextLabel: '예제 곡 열기' },
-      { v: 4, target: '#partBar', title: '내 파트 고르기', text: '빨갛게 표시할 파트를 고릅니다. 파트 버튼은 한 줄로 있어서 <b>좌우로 밀면</b> 다른 파트가 보입니다. <b>전체</b>를 고르면 모든 파트가 표시됩니다. 악보는 항상 전체가 보이고, 고른 파트만 빨갛게 바뀝니다.',
+      { v: 4, target: '#partBar', title: '내 파트 고르기', text: '빨갛게 표시할 파트를 고릅니다. 파트 버튼은 한 줄로 있어서 <b>손가락으로 좌우로 끌면</b> 다른 파트가 보입니다. <b>전체</b>를 고르면 모든 파트가 표시됩니다. 악보는 항상 전체가 보이고, 고른 파트만 빨갛게 바뀝니다.',
         before: openSample, wait: 200 },
       { target: '#trackBar', title: '들을 소리 고르기', text: '곡에 넣은 mp3 음원(♪)과 <b>🎹 MIDI 소리</b> 중에서 고릅니다. mp3가 없어도 MIDI 소리로 들을 수 있습니다. 예제 곡은 MIDI 소리만 있습니다.',
         before: openSample },

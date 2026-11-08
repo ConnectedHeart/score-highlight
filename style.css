@@ -46,6 +46,7 @@ button.wide { width: 100%; padding: 14px; font-size: 16px; }
 .part-bar { flex-wrap: nowrap; gap: 6px; padding: 6px 8px; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; -webkit-overflow-scrolling: touch; overscroll-behavior-x: contain; }
 .part-bar::-webkit-scrollbar { display: none; }
 .part-bar .chip { flex: none; }
+.part-bar, .track-bar { touch-action: pan-x; cursor: grab; user-select: none; -webkit-user-select: none; }
 .part-bar .chip { padding: 5px 11px; font-size: 13px; }
 .part-bar .chip.on { background: var(--accent); }
 
